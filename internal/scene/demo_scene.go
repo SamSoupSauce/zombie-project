@@ -647,22 +647,10 @@ func (s *DemoScene) Update(dt float32) {
 		}
 
 		if s.ViewMode == camera.ViewModeFirstPerson {
-			// Extract solid boxes for collision detection
+			// Extract accurate solid boxes for collision detection from Map3D (including stair steps and wall segments)
 			var mapSolidBoxes []rl.BoundingBox
 			if s.ShowMap && s.Map3D != nil {
-				mapSolidBoxes = make([]rl.BoundingBox, 0, len(s.Map3D.Tiles))
-				for i := range s.Map3D.Tiles {
-					t := &s.Map3D.Tiles[i]
-					if t.IsSolid {
-						halfW := t.Size.X / 2.0
-						halfH := t.Size.Y / 2.0
-						halfD := t.Size.Z / 2.0
-						mapSolidBoxes = append(mapSolidBoxes, rl.NewBoundingBox(
-							rl.NewVector3(t.Position.X-halfW, t.Position.Y-halfH, t.Position.Z-halfD),
-							rl.NewVector3(t.Position.X+halfW, t.Position.Y+halfH, t.Position.Z+halfD),
-						))
-					}
-				}
+				mapSolidBoxes = s.Map3D.GetSolidBoxes()
 			}
 			s.PhysicsWorld.SetSolidBoxes(mapSolidBoxes)
 
