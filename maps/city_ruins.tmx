@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="12" height="12" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="5">
+ <properties>
+  <property name="title" value="City Ruins - Sector 4"/>
+  <property name="danger_level" value="Extreme"/>
+ </properties>
+ <layer id="1" name="StreetsAndBuildings" width="12" height="12">
+  <data encoding="csv">
+2,2,2,2,1,1,1,1,2,2,2,2,
+2,5,5,2,1,1,1,1,2,5,5,2,
+2,5,5,2,1,3,3,1,2,5,5,2,
+2,2,2,2,1,1,1,1,2,2,2,2,
+1,1,1,1,1,4,4,1,1,1,1,1,
+1,1,1,1,4,1,1,4,1,1,1,1,
+1,1,1,1,4,1,1,4,1,1,1,1,
+1,1,1,1,1,4,4,1,1,1,1,1,
+2,2,2,2,1,1,1,1,2,2,2,2,
+2,5,5,2,1,3,3,1,2,5,5,2,
+2,5,5,2,1,1,1,1,2,5,5,2,
+2,2,2,2,1,1,1,1,2,2,2,2
+  </data>
+ </layer>
+ <objectgroup id="2" name="Spawners">
+  <object id="1" name="PlayerDrop" type="player" x="192" y="192" width="32" height="32"/>
+  <object id="2" name="HordeLeader" type="zombie" x="64" y="64" width="32" height="32"/>
+  <object id="3" name="StreetBeacon" type="cube" x="192" y="192" width="32" height="32">
+   <properties>
+    <property name="size" value="0.9"/>
+    <property name="mode" value="faces"/>
+   </properties>
+  </object>
+ </objectgroup>
+</map>

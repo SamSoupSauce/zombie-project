@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="24" height="1" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="12">
+ <properties>
+  <property name="title" value="Kitchen Sink Gallery"/>
+  <property name="author" value="Zombie Game Team"/>
+  <property name="description" value="Showcases every wall, floor, hazard, spawner, item, and physics prop in a single long row"/>
+  <property name="ambient_light" type="float" value="0.85"/>
+  <property name="difficulty" value="Sandbox"/>
+ </properties>
+ <tileset firstgid="1" name="kitchen_sink_tiles" tilewidth="32" tileheight="32" tilecount="18" columns="4">
+  <tile id="0">
+   <properties>
+    <property name="name" value="Floor Pavement (Asphalt)"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="1">
+   <properties>
+    <property name="name" value="Stone Wall"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.0"/>
+   </properties>
+  </tile>
+  <tile id="2">
+   <properties>
+    <property name="name" value="Crate Barricade"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="0.9"/>
+   </properties>
+  </tile>
+  <tile id="3">
+   <properties>
+    <property name="name" value="Steel Watchtower Pillar"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="3.4"/>
+   </properties>
+  </tile>
+  <tile id="4">
+   <properties>
+    <property name="name" value="Grass Lawn"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="5">
+   <properties>
+    <property name="name" value="Toxic Water Pool"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="6">
+   <properties>
+    <property name="name" value="Reinforced Metal Wall"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+   </properties>
+  </tile>
+  <tile id="7">
+   <properties>
+    <property name="name" value="Glass Crystal Barrier"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="1.5"/>
+   </properties>
+  </tile>
+  <tile id="8">
+   <properties>
+    <property name="name" value="Sand Terrain"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="9">
+   <properties>
+    <property name="name" value="Wood Plank Floor"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="10">
+   <properties>
+    <property name="name" value="Lava Magma Pool"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="11">
+   <properties>
+    <property name="name" value="Concrete Curb"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="0.45"/>
+   </properties>
+  </tile>
+  <tile id="12">
+   <properties>
+    <property name="name" value="Cyber Grid Floor"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="13">
+   <properties>
+    <property name="name" value="Exterior Wall (1 Wall: South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="south"/>
+    <property name="flooring" value="asphalt"/>
+   </properties>
+  </tile>
+  <tile id="14">
+   <properties>
+    <property name="name" value="Interior Wall (1 Wall: South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="interior"/>
+    <property name="walls" value="south"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="15">
+   <properties>
+    <property name="name" value="Corner Walls (2 Walls: North+East)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="north,east"/>
+    <property name="flooring" value="asphalt"/>
+   </properties>
+  </tile>
+  <tile id="16">
+   <properties>
+    <property name="name" value="Alcove Walls (3 Walls: North+South+West)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="interior"/>
+    <property name="walls" value="north,south,west"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="17">
+   <properties>
+    <property name="name" value="Enclosed Cell (4 Walls: All Edges)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="all"/>
+    <property name="flooring" value="cyber"/>
+   </properties>
+  </tile>
+ </tileset>
+ <layer id="1" name="SingleLongRow" width="24" height="1">
+  <data encoding="csv">
+1,5,9,10,13,6,11,12,3,8,2,7,4,14,15,16,17,18,1,1,1,1,1,1
+  </data>
+ </layer>
+ <objectgroup id="2" name="ShowcaseEntities">
+  <object id="1" name="PlayerObserver" type="player" x="368" y="80" width="32" height="32">
+   <properties>
+    <property name="role" value="inspector"/>
+   </properties>
+  </object>
+  <object id="2" name="ZombieWalker" type="zombie" x="448" y="0" width="32" height="32">
+   <properties>
+    <property name="type" value="walker"/>
+    <property name="hp" type="int" value="100"/>
+   </properties>
+  </object>
+  <object id="3" name="ZombieRunner" type="zombie" x="480" y="0" width="32" height="32">
+   <properties>
+    <property name="type" value="runner"/>
+    <property name="hp" type="int" value="80"/>
+   </properties>
+  </object>
+  <object id="4" name="MedkitSupply" type="health" x="512" y="0" width="32" height="32"/>
+  <object id="5" name="AmmoCrate" type="ammo" x="544" y="0" width="32" height="32"/>
+  <object id="6" name="LootCache" type="item" x="576" y="0" width="32" height="32"/>
+  <object id="7" name="FaceColorsCube" type="cube" x="608" y="0" width="32" height="32">
+   <properties>
+    <property name="mode" value="faces"/>
+    <property name="size" value="0.75"/>
+    <property name="mass" value="30.0"/>
+   </properties>
+  </object>
+  <object id="8" name="VertexGradientCube" type="cube" x="640" y="0" width="32" height="32">
+   <properties>
+    <property name="mode" value="gradient"/>
+    <property name="size" value="0.75"/>
+    <property name="mass" value="20.0"/>
+   </properties>
+  </object>
+  <object id="9" name="ChromaCycleCube" type="cube" x="672" y="0" width="32" height="32">
+   <properties>
+    <property name="mode" value="chroma"/>
+    <property name="size" value="0.75"/>
+    <property name="mass" value="10.0"/>
+   </properties>
+  </object>
+  <object id="10" name="HeavySteelCrate" type="cube" x="704" y="0" width="32" height="32">
+   <properties>
+    <property name="mode" value="faces"/>
+    <property name="size" value="0.9"/>
+    <property name="mass" value="120.0"/>
+   </properties>
+  </object>
+  <object id="11" name="MicroCube" type="cube" x="736" y="0" width="32" height="32">
+   <properties>
+    <property name="mode" value="chroma"/>
+    <property name="size" value="0.35"/>
+    <property name="mass" value="5.0"/>
+   </properties>
+  </object>
+ </objectgroup>
+</map>

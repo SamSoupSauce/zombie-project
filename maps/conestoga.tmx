@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="16" height="16" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="15">
+ <properties>
+  <property name="title" value="Fort Conestoga - Frontier Outpost"/>
+  <property name="author" value="Zombie Game Team"/>
+  <property name="description" value="A fortified frontier wagon settlement featuring a pioneer house with wood floors and dual-face walls, campfire, and river crossing"/>
+  <property name="ambient_light" type="float" value="0.80"/>
+  <property name="difficulty" value="Survival"/>
+ </properties>
+ <tileset firstgid="1" name="conestoga_tiles" tilewidth="32" tileheight="32" tilecount="30" columns="4">
+  <tile id="0">
+   <properties>
+    <property name="name" value="Floor Pavement (Stone Cobblestone)"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="1">
+   <properties>
+    <property name="name" value="Stockade Stone Wall"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.0"/>
+   </properties>
+  </tile>
+  <tile id="2">
+   <properties>
+    <property name="name" value="Crate Barricade"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="0.9"/>
+   </properties>
+  </tile>
+  <tile id="3">
+   <properties>
+    <property name="name" value="Watchtower Log Pillar"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="3.4"/>
+   </properties>
+  </tile>
+  <tile id="4">
+   <properties>
+    <property name="name" value="Wilderness Grass"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="5">
+   <properties>
+    <property name="name" value="River Water"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="6">
+   <properties>
+    <property name="name" value="Reinforced Iron Barricade"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+   </properties>
+  </tile>
+  <tile id="7">
+   <properties>
+    <property name="name" value="Glass Lantern Shield"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="1.5"/>
+   </properties>
+  </tile>
+  <tile id="8">
+   <properties>
+    <property name="name" value="Dirt Wagon Trail"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="9">
+   <properties>
+    <property name="name" value="Pioneer Wood Plank Floor"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="10">
+   <properties>
+    <property name="name" value="Campfire Forge Hearth"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="11">
+   <properties>
+    <property name="name" value="Wood Hitching Fence"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="0.45"/>
+   </properties>
+  </tile>
+  <tile id="12">
+   <properties>
+    <property name="name" value="Trading Post Plank Deck"/>
+    <property name="solid" type="bool" value="false"/>
+   </properties>
+  </tile>
+  <tile id="13">
+   <properties>
+    <property name="name" value="Exterior Wall (1 Wall: South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="south"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="14">
+   <properties>
+    <property name="name" value="Interior Wall (1 Wall: South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="interior"/>
+    <property name="walls" value="south"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="15">
+   <properties>
+    <property name="name" value="House Wall (North)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="north"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="16">
+   <properties>
+    <property name="name" value="House Wall (South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="south"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="17">
+   <properties>
+    <property name="name" value="House Wall (West)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="west"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="18">
+   <properties>
+    <property name="name" value="House Wall (East)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="east"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="19">
+   <properties>
+    <property name="name" value="House Corner (NW)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="north,west"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="20">
+   <properties>
+    <property name="name" value="House Corner (NE)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="north,east"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="21">
+   <properties>
+    <property name="name" value="House Corner (SW)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="south,west"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="22">
+   <properties>
+    <property name="name" value="House Corner (SE)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="south,east"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="23">
+   <properties>
+    <property name="name" value="Interior Partition Wall (East)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="2.2"/>
+    <property name="wall_type" value="interior"/>
+    <property name="walls" value="east"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="24">
+   <properties>
+    <property name="name" value="Pioneer Wood Staircase (North)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="north"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.0"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="25">
+   <properties>
+    <property name="name" value="Pioneer Wood Staircase (South)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="south"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.0"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="26">
+   <properties>
+    <property name="name" value="Pioneer Wood Staircase (East)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="east"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.0"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="27">
+   <properties>
+    <property name="name" value="Pioneer Wood Staircase (West)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="west"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.0"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="28">
+   <properties>
+    <property name="name" value="Pioneer Loft Platform"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="height" type="float" value="1.0"/>
+    <property name="type" value="barricade"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+ </tileset>
+ <layer id="1" name="GroundAndFort" width="16" height="16">
+  <data encoding="csv">
+5,5,5,5,5,5,5,5,5,5,9,5,5,5,6,6,
+5,5,5,5,5,5,5,5,5,5,9,5,5,5,6,6,
+5,5,4,2,2,2,2,2,2,2,9,4,5,5,6,6,
+5,5,2,20,16,16,16,16,16,21,9,2,5,5,6,6,
+5,5,2,18,10,24,10,29,29,19,9,2,5,5,6,6,
+5,5,2,18,10,10,10,10,25,19,9,2,5,5,6,6,
+5,5,2,18,10,24,10,10,10,19,9,2,5,5,6,6,
+5,5,2,22,17,17,10,17,17,23,9,2,5,5,6,6,
+5,5,2,1,1,1,9,1,1,9,9,10,10,10,10,10,
+5,5,3,20,16,1,11,1,1,9,9,10,10,10,10,10,
+5,5,2,18,10,1,9,1,16,21,12,2,5,5,6,6,
+5,5,2,22,17,3,9,3,17,23,1,2,5,5,6,6,
+5,5,4,2,2,2,9,2,2,2,2,4,5,5,6,6,
+5,5,5,5,5,5,9,5,5,5,5,5,5,5,6,6,
+5,5,5,5,5,5,9,5,5,5,5,5,5,5,6,6,
+5,5,5,5,5,5,9,5,5,5,5,5,5,5,6,6
+  </data>
+ </layer>
+ <objectgroup id="2" name="EntitiesAndSpawns">
+  <object id="1" name="PlayerPioneer" type="player" x="208" y="272" width="32" height="32">
+   <properties>
+    <property name="role" value="pioneer"/>
+   </properties>
+  </object>
+  <object id="2" name="NorthWoodsWalker" type="zombie" x="320" y="16" width="32" height="32">
+   <properties>
+    <property name="type" value="walker"/>
+    <property name="hp" type="int" value="100"/>
+   </properties>
+  </object>
+  <object id="3" name="EastRiverRunner" type="zombie" x="480" y="128" width="32" height="32">
+   <properties>
+    <property name="type" value="runner"/>
+    <property name="hp" type="int" value="80"/>
+   </properties>
+  </object>
+  <object id="4" name="WestWoodsStalker" type="zombie" x="32" y="256" width="32" height="32">
+   <properties>
+    <property name="type" value="walker"/>
+    <property name="hp" type="int" value="120"/>
+   </properties>
+  </object>
+  <object id="5" name="SouthTrailAmbush" type="zombie" x="208" y="464" width="32" height="32">
+   <properties>
+    <property name="type" value="runner"/>
+    <property name="hp" type="int" value="90"/>
+   </properties>
+  </object>
+  <object id="6" name="CreekBridgeZombie" type="zombie" x="464" y="288" width="32" height="32">
+   <properties>
+    <property name="type" value="walker"/>
+    <property name="hp" type="int" value="110"/>
+   </properties>
+  </object>
+  <object id="7" name="CourtyardMedkit" type="health" x="112" y="304" width="32" height="32"/>
+  <object id="8" name="WatchtowerAmmo" type="ammo" x="368" y="80" width="32" height="32"/>
+  <object id="9" name="WagonLootCache" type="item" x="272" y="336" width="32" height="32"/>
+  <object id="10" name="ConestogaToolbox" type="cube" x="176" y="288" width="32" height="32">
+   <properties>
+    <property name="mode" value="faces"/>
+    <property name="size" value="0.6"/>
+    <property name="mass" value="15.0"/>
+   </properties>
+  </object>
+  <object id="11" name="CampfireLantern" type="cube" x="224" y="288" width="32" height="32">
+   <properties>
+    <property name="mode" value="chroma"/>
+    <property name="size" value="0.45"/>
+    <property name="mass" value="8.0"/>
+   </properties>
+  </object>
+  <object id="12" name="HeavySupplyChest" type="cube" x="272" y="368" width="32" height="32">
+   <properties>
+    <property name="mode" value="gradient"/>
+    <property name="size" value="0.85"/>
+    <property name="mass" value="55.0"/>
+   </properties>
+  </object>
+  <object id="13" name="PioneerBarricadeBox" type="cube" x="176" y="352" width="32" height="32">
+   <properties>
+    <property name="mode" value="faces"/>
+    <property name="size" value="0.75"/>
+    <property name="mass" value="35.0"/>
+   </properties>
+  </object>
+ </objectgroup>
+</map>
