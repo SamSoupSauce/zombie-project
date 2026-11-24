@@ -903,7 +903,6 @@ func TestLoadConestogaMap(t *testing.T) {
 		{5, 5},
 		{6, 4}, {6, 5}, {6, 6},
 		{7, 5}, {7, 6},
-		{8, 6},
 	}
 	for _, coord := range walkableCoords {
 		c, r := coord[0], coord[1]
@@ -913,18 +912,38 @@ func TestLoadConestogaMap(t *testing.T) {
 		}
 	}
 
-	// Verify staircase at (8, 5) and loft platforms at (7, 4), (8, 4)
-	tStairs := m3d.findTileAt(8, 5)
-	if tStairs == nil || tStairs.Type != TileStairs || !tStairs.IsStairs {
-		t.Errorf("expected staircase at (8, 5), got %v", tStairs)
+	// Verify two stacked half-height staircases at (8, 6) and (8, 5), and loft platforms at (7, 4), (8, 4)
+	tStairsLower := m3d.findTileAt(8, 6)
+	if tStairsLower == nil || tStairsLower.Type != TileStairs || !tStairsLower.IsStairs {
+		t.Errorf("expected lower staircase at (8, 6), got %v", tStairsLower)
+	} else {
+		if tStairsLower.StartHeight != 0.0 {
+			t.Errorf("expected lower staircase start_height 0.0, got %f", tStairsLower.StartHeight)
+		}
+		if tStairsLower.StairHeight != 1.1 {
+			t.Errorf("expected lower staircase stair_height 1.1, got %f", tStairsLower.StairHeight)
+		}
 	}
+
+	tStairsUpper := m3d.findTileAt(8, 5)
+	if tStairsUpper == nil || tStairsUpper.Type != TileStairs || !tStairsUpper.IsStairs {
+		t.Errorf("expected upper staircase at (8, 5), got %v", tStairsUpper)
+	} else {
+		if tStairsUpper.StartHeight != 1.1 {
+			t.Errorf("expected upper staircase start_height 1.1, got %f", tStairsUpper.StartHeight)
+		}
+		if tStairsUpper.StairHeight != 1.1 {
+			t.Errorf("expected upper staircase stair_height 1.1, got %f", tStairsUpper.StairHeight)
+		}
+	}
+
 	tLoft7 := m3d.findTileAt(7, 4)
-	if tLoft7 == nil || !tLoft7.IsSolid {
-		t.Errorf("expected solid loft platform at (7, 4)")
+	if tLoft7 == nil || !tLoft7.IsSolid || tLoft7.Size.Y < 2.19 {
+		t.Errorf("expected 2.2m solid loft platform at (7, 4), got %v", tLoft7)
 	}
 	tLoft8 := m3d.findTileAt(8, 4)
-	if tLoft8 == nil || !tLoft8.IsSolid {
-		t.Errorf("expected solid loft platform at (8, 4)")
+	if tLoft8 == nil || !tLoft8.IsSolid || tLoft8.Size.Y < 2.19 {
+		t.Errorf("expected 2.2m solid loft platform at (8, 4), got %v", tLoft8)
 	}
 
 	// Wall Thickness check: All wall segments in the house must be ~0.2m thick
@@ -1422,25 +1441,40 @@ func TestConestogaHouseStartupMapWithStairs(t *testing.T) {
 		t.Fatalf("expected tiles loaded from conestoga.tmx")
 	}
 
-	// Find the staircase at Col 8, Row 5 (GID 25)
-	stairTile := m3d.findTileAt(8, 5)
-	if stairTile == nil {
-		t.Fatalf("expected staircase tile at (8, 5)")
+	// Find the lower staircase at Col 8, Row 6 (GID 25)
+	stairLower := m3d.findTileAt(8, 6)
+	if stairLower == nil {
+		t.Fatalf("expected lower staircase tile at (8, 6)")
 	}
-	if stairTile.Type != TileStairs {
-		t.Errorf("expected TileStairs at (8, 5), got %d", stairTile.Type)
+	if stairLower.Type != TileStairs || !stairLower.IsStairs {
+		t.Errorf("expected TileStairs at (8, 6), got %d", stairLower.Type)
 	}
-	if !stairTile.IsStairs {
-		t.Errorf("expected IsStairs == true at (8, 5)")
+	if stairLower.StartHeight != 0.0 {
+		t.Errorf("expected lower staircase start_height 0.0, got %f", stairLower.StartHeight)
 	}
-	if stairTile.StairDir != StairAscendNorth {
-		t.Errorf("expected StairAscendNorth at (8, 5), got %v", stairTile.StairDir)
+	if stairLower.StairHeight != 1.1 {
+		t.Errorf("expected lower staircase stair_height 1.1, got %f", stairLower.StairHeight)
 	}
-	if len(stairTile.Steps) != 4 {
-		t.Errorf("expected 4 steps at (8, 5), got %d", len(stairTile.Steps))
+
+	// Find the upper staircase at Col 8, Row 5 (GID 30)
+	stairUpper := m3d.findTileAt(8, 5)
+	if stairUpper == nil {
+		t.Fatalf("expected upper staircase tile at (8, 5)")
 	}
-	if !stairTile.HasFlooring {
-		t.Errorf("expected staircase to have underlying wood plank flooring")
+	if stairUpper.Type != TileStairs || !stairUpper.IsStairs {
+		t.Errorf("expected TileStairs at (8, 5), got %d", stairUpper.Type)
+	}
+	if stairUpper.StartHeight != 1.1 {
+		t.Errorf("expected upper staircase start_height 1.1, got %f", stairUpper.StartHeight)
+	}
+	if stairUpper.StairHeight != 1.1 {
+		t.Errorf("expected upper staircase stair_height 1.1, got %f", stairUpper.StairHeight)
+	}
+	if stairUpper.StairDir != StairAscendNorth {
+		t.Errorf("expected StairAscendNorth at (8, 5), got %v", stairUpper.StairDir)
+	}
+	if len(stairUpper.Steps) != 4 {
+		t.Errorf("expected 4 steps at (8, 5), got %d", len(stairUpper.Steps))
 	}
 
 	// Find the loft platforms at Col 7 & 8, Row 4 (GID 29)
@@ -1448,37 +1482,126 @@ func TestConestogaHouseStartupMapWithStairs(t *testing.T) {
 	if loftTile8 == nil {
 		t.Fatalf("expected loft tile at (8, 4)")
 	}
-	if !loftTile8.IsSolid {
-		t.Errorf("expected solid loft platform at (8, 4)")
+	if !loftTile8.IsSolid || loftTile8.Size.Y < 2.19 {
+		t.Errorf("expected 2.2m solid loft platform at (8, 4), got %v", loftTile8)
 	}
 
 	loftTile7 := m3d.findTileAt(7, 4)
 	if loftTile7 == nil {
 		t.Fatalf("expected loft tile at (7, 4)")
 	}
-	if !loftTile7.IsSolid {
-		t.Errorf("expected solid loft platform at (7, 4)")
+	if !loftTile7.IsSolid || loftTile7.Size.Y < 2.19 {
+		t.Errorf("expected 2.2m solid loft platform at (7, 4), got %v", loftTile7)
 	}
 
-	// Verify player can walk from Row 6 into the stairs at Row 5, and step onto the loft at Row 4
+	// Verify player can walk from Row 7 -> Row 6 (lower flight) -> Row 5 (upper flight) -> Row 4 (loft)
+	// and walk back down smoothly simply by moving forwards and backwards
 	solidBoxes := m3d.GetSolidBoxes()
 	// World coordinate for Col 8 is (8 - 8 + 0.5) * 1.0 = 0.5
-	// World coordinate for Row 6 is (6 - 8 + 0.5) * 1.0 = -1.5
-	// World coordinate for Row 5 is (5 - 8 + 0.5) * 1.0 = -2.5 (staircase)
-	// World coordinate for Row 4 is (4 - 8 + 0.5) * 1.0 = -3.5 (loft)
-	fps := camera.NewFPSController(rl.NewVector3(0.5, -2.12, -1.8), -2.2)
+	// World coordinate for Row 7 is -0.5
+	// World coordinate for Row 6 is -1.5 (lower staircase: 0.0m to 1.1m)
+	// World coordinate for Row 5 is -2.5 (upper staircase: 1.1m to 2.2m)
+	// World coordinate for Row 4 is -3.5 (2.2m loft platform)
+	fps := camera.NewFPSController(rl.NewVector3(0.5, -2.12, -0.6), -2.2)
 	fps.Position.Y = -2.12
 
-	// Walk North toward staircase and loft (-Z direction)
-	for i := 0; i < 20; i++ {
-		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.1), 0.016, solidBoxes)
+	// Walk North toward lower stairs, upper stairs, and loft (-Z direction)
+	for i := 0; i < 35; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.09), 0.016, solidBoxes)
 	}
 
-	// Player should have reached the loft platform (elevation ~ -1.12)
-	if fps.Position.Y < -1.2 {
-		t.Errorf("expected player to reach loft platform at Y ~ -1.12, got Y = %f", fps.Position.Y)
+	// Player should have reached the top loft platform (elevation ~ +0.08m)
+	if fps.Position.Y < -0.05 {
+		t.Errorf("expected player to reach 2.2m loft platform at Y ~ +0.08, got Y = %f (Z: %f)", fps.Position.Y, fps.Position.Z)
 	}
-	if fps.Position.Z > -2.6 {
-		t.Errorf("expected player to advance North into loft, got Z = %f", fps.Position.Z)
+	if fps.Position.Z > -3.1 {
+		t.Errorf("expected player to advance North into loft (Z < -3.1), got Z = %f", fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Errorf("expected player to be grounded on top loft platform")
+	}
+
+	// Walk South back down both flights (+Z direction)
+	for i := 0; i < 35; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, 0.09), 0.016, solidBoxes)
+	}
+
+	// Player should have stepped down all the way to ground floor level (-2.12)
+	if fps.Position.Y > -2.05 {
+		t.Errorf("expected player to walk back down to floor Y ~ -2.12, got Y = %f", fps.Position.Y)
+	}
+	if !fps.IsGrounded {
+		t.Errorf("expected player to be grounded on floor after walking down")
+	}
+}
+
+func TestStaircaseAutomaticStacking(t *testing.T) {
+	// 1x3 map with two adjacent North-ascending staircases and a landing platform:
+	// Row 2: Lower staircase (North, rise 1.1, no explicit start_height)
+	// Row 1: Upper staircase (North, rise 1.1, no explicit start_height)
+	// Row 0: Landing platform (barricade, height 1.0)
+	xmlData := `<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="1" height="3" tilewidth="32" tileheight="32">
+ <tileset firstgid="1" name="stairs_set" tilewidth="32" tileheight="32" tilecount="3" columns="3">
+  <tile id="0">
+   <properties>
+    <property name="name" value="Wood Staircase"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="north"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.1"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="1">
+   <properties>
+    <property name="name" value="Landing Loft Platform"/>
+    <property name="type" value="barricade"/>
+    <property name="height" type="float" value="1.0"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+ </tileset>
+ <layer id="1" name="StairsStackLayer" width="1" height="3">
+  <data encoding="csv">
+2,
+1,
+1
+  </data>
+ </layer>
+</map>`
+
+	m, err := ParseTMX([]byte(xmlData))
+	if err != nil {
+		t.Fatalf("failed to parse XML: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+
+	// Row 2 is the lower flight
+	lower := m3d.findTileAt(0, 2)
+	if lower == nil || !lower.IsStairs {
+		t.Fatalf("expected lower stairs at (0, 2)")
+	}
+	if lower.StartHeight != 0.0 {
+		t.Errorf("expected lower StartHeight 0.0, got %f", lower.StartHeight)
+	}
+
+	// Row 1 is the upper flight (should be automatically stacked to StartHeight = 1.1)
+	upper := m3d.findTileAt(0, 1)
+	if upper == nil || !upper.IsStairs {
+		t.Fatalf("expected upper stairs at (0, 1)")
+	}
+	if upper.StartHeight != 1.1 {
+		t.Errorf("expected upper StartHeight automatically resolved to 1.1, got %f", upper.StartHeight)
+	}
+
+	// Row 0 is the landing platform (should be automatically aligned to 2.2m)
+	platform := m3d.findTileAt(0, 0)
+	if platform == nil {
+		t.Fatalf("expected landing platform at (0, 0)")
+	}
+	if platform.Size.Y < 2.19 {
+		t.Errorf("expected landing platform height automatically aligned to 2.2, got %f", platform.Size.Y)
 	}
 }

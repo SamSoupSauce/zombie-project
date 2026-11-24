@@ -204,12 +204,13 @@
   </tile>
   <tile id="24">
    <properties>
-    <property name="name" value="Pioneer Wood Staircase (North)"/>
+    <property name="name" value="Pioneer Wood Staircase (North - Lower)"/>
     <property name="solid" type="bool" value="true"/>
     <property name="type" value="stairs"/>
     <property name="direction" value="north"/>
     <property name="steps" type="int" value="4"/>
-    <property name="rise" type="float" value="1.0"/>
+    <property name="rise" type="float" value="1.1"/>
+    <property name="start_height" type="float" value="0.0"/>
     <property name="flooring" value="wood"/>
    </properties>
   </tile>
@@ -220,7 +221,7 @@
     <property name="type" value="stairs"/>
     <property name="direction" value="south"/>
     <property name="steps" type="int" value="4"/>
-    <property name="rise" type="float" value="1.0"/>
+    <property name="rise" type="float" value="1.1"/>
     <property name="flooring" value="wood"/>
    </properties>
   </tile>
@@ -231,7 +232,7 @@
     <property name="type" value="stairs"/>
     <property name="direction" value="east"/>
     <property name="steps" type="int" value="4"/>
-    <property name="rise" type="float" value="1.0"/>
+    <property name="rise" type="float" value="1.1"/>
     <property name="flooring" value="wood"/>
    </properties>
   </tile>
@@ -242,7 +243,7 @@
     <property name="type" value="stairs"/>
     <property name="direction" value="west"/>
     <property name="steps" type="int" value="4"/>
-    <property name="rise" type="float" value="1.0"/>
+    <property name="rise" type="float" value="1.1"/>
     <property name="flooring" value="wood"/>
    </properties>
   </tile>
@@ -250,8 +251,20 @@
    <properties>
     <property name="name" value="Pioneer Loft Platform"/>
     <property name="solid" type="bool" value="true"/>
-    <property name="height" type="float" value="1.0"/>
+    <property name="height" type="float" value="2.2"/>
     <property name="type" value="barricade"/>
+    <property name="flooring" value="wood"/>
+   </properties>
+  </tile>
+  <tile id="29">
+   <properties>
+    <property name="name" value="Pioneer Wood Staircase (North - Upper)"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="north"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.1"/>
+    <property name="start_height" type="float" value="1.1"/>
     <property name="flooring" value="wood"/>
    </properties>
   </tile>
@@ -263,8 +276,8 @@
 5,5,4,2,2,2,2,2,2,2,9,4,5,5,6,6,
 5,5,2,20,16,16,16,16,16,21,9,2,5,5,6,6,
 5,5,2,18,10,24,10,29,29,19,9,2,5,5,6,6,
-5,5,2,18,10,10,10,10,25,19,9,2,5,5,6,6,
-5,5,2,18,10,24,10,10,10,19,9,2,5,5,6,6,
+5,5,2,18,10,10,10,10,30,19,9,2,5,5,6,6,
+5,5,2,18,10,24,10,10,25,19,9,2,5,5,6,6,
 5,5,2,22,17,17,10,17,17,23,9,2,5,5,6,6,
 5,5,2,1,1,1,9,1,1,9,9,10,10,10,10,10,
 5,5,3,20,16,1,11,1,1,9,9,10,10,10,10,10,

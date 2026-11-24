@@ -306,94 +306,148 @@ func (c *FPSController) GetLookRay() rl.Ray {
 // stepping up over ledges, curbs, and staircases (<= StepHeight), resolving wall collisions,
 // and applying gravity and ground collision.
 func (c *FPSController) MoveWithCollisions(deltaH rl.Vector3, dt float32, solidBoxes []rl.BoundingBox) {
-	newPos := c.Position
-	newPos.X += deltaH.X
-	newPos.Z += deltaH.Z
+	if deltaH.X == 0 && deltaH.Z == 0 && c.Velocity.Y == 0 && c.IsGrounded {
+		return
+	}
 
-	// 1. Resolve collisions against walls taller than StepHeight
-	newPos = c.resolveWallCollisions(newPos, solidBoxes)
-
-	// 2. Step-Up for ledges, curbs, and staircases (obstacle height <= StepHeight)
-	stepH := c.StepHeight
 	r := c.PlayerRadius
+	stepH := c.StepHeight
 	startFeet := c.Position.Y
-	stepUpY := startFeet
 
-	for _, b := range solidBoxes {
-		if newPos.X+r > b.Min.X && newPos.X-r < b.Max.X &&
-			newPos.Z+r > b.Min.Z && newPos.Z-r < b.Max.Z {
-			// Check if obstacle is a step above our feet and within step threshold
-			if b.Max.Y > startFeet && b.Max.Y <= startFeet+stepH {
-				if b.Max.Y > stepUpY {
-					// Verify headroom above the step
-					hasHeadroom := true
-					for _, other := range solidBoxes {
-						if other.Min.Y >= b.Max.Y && other.Min.Y < b.Max.Y+c.EyeHeight {
-							if newPos.X+r > other.Min.X && newPos.X-r < other.Max.X &&
-								newPos.Z+r > other.Min.Z && newPos.Z-r < other.Max.Z {
-								hasHeadroom = false
-								break
-							}
-						}
+	// Helper to find highest walkable ground beneath a given position
+	findGround := func(pos rl.Vector3, maxElevation float32) float32 {
+		ground := c.GroundY
+		for _, b := range solidBoxes {
+			if pos.X+r*0.6 > b.Min.X && pos.X-r*0.6 < b.Max.X &&
+				pos.Z+r*0.6 > b.Min.Z && pos.Z-r*0.6 < b.Max.Z {
+				if b.Max.Y <= maxElevation {
+					if b.Max.Y > ground {
+						ground = b.Max.Y
 					}
-					if hasHeadroom {
-						stepUpY = b.Max.Y
+				}
+			}
+		}
+		return ground
+	}
+
+	// Helper to check if a position has headroom (EyeHeight)
+	hasHeadroomAt := func(pos rl.Vector3, feetY float32) bool {
+		for _, b := range solidBoxes {
+			// A box obstructs headroom if it is above feetY and below feetY + EyeHeight
+			if b.Min.Y >= feetY && b.Min.Y < feetY+c.EyeHeight {
+				if pos.X+r*0.8 > b.Min.X && pos.X-r*0.8 < b.Max.X &&
+					pos.Z+r*0.8 > b.Min.Z && pos.Z-r*0.8 < b.Max.Z {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	// 1. First, attempt flat horizontal move at current feet height
+	flatPos := c.Position
+	flatPos.X += deltaH.X
+	flatPos.Z += deltaH.Z
+	flatPos = c.resolveWallCollisionsAt(flatPos, startFeet, solidBoxes)
+
+	chosenPos := flatPos
+	chosenFeet := startFeet
+
+	// Check if flat move was blocked in either X or Z
+	flatBlocked := (flatPos.X != c.Position.X+deltaH.X) || (flatPos.Z != c.Position.Z+deltaH.Z)
+
+	// 2. Step-Up move (Quake / Source standard PM_StepSlideMove):
+	// If grounded or flat move was blocked, test the elevated step move
+	if c.IsGrounded || flatBlocked {
+		// Can we lift up by stepH? Check headroom
+		if hasHeadroomAt(c.Position, startFeet+stepH) {
+			stepPos := c.Position
+			stepPos.X += deltaH.X
+			stepPos.Z += deltaH.Z
+			// At elevated height (startFeet + stepH), test wall collisions:
+			// Obstacles taller than stepH above (startFeet + stepH) are true walls (e.g. 2.2m house walls)
+			stepPos = c.resolveWallCollisionsAt(stepPos, startFeet+stepH, solidBoxes)
+
+			// How far did stepPos get compared to flatPos?
+			stepDistSq := (stepPos.X-c.Position.X)*(stepPos.X-c.Position.X) + (stepPos.Z-c.Position.Z)*(stepPos.Z-c.Position.Z)
+			flatDistSq := (flatPos.X-c.Position.X)*(flatPos.X-c.Position.X) + (flatPos.Z-c.Position.Z)*(flatPos.Z-c.Position.Z)
+
+			// Find highest ground surface below stepPos that is reachable within stepH
+			stepGround := findGround(stepPos, startFeet+stepH+0.05)
+
+			// If step move made forward progress and found a valid surface up to stepH above startFeet:
+			if stepGround > startFeet && stepGround <= startFeet+stepH+0.05 {
+				if hasHeadroomAt(stepPos, stepGround) {
+					if stepDistSq >= flatDistSq-0.001 {
+						chosenPos = stepPos
+						chosenFeet = stepGround
+					}
+				}
+			} else if stepDistSq > flatDistSq+0.001 {
+				// Flat was blocked by a low obstacle (e.g. step 2 ahead while on step 0),
+				// but stepPos could advance over it!
+				if stepGround >= startFeet-0.1 && stepGround <= startFeet+stepH+0.05 {
+					if hasHeadroomAt(stepPos, stepGround) {
+						chosenPos = stepPos
+						if stepGround > startFeet {
+							chosenFeet = stepGround
+						}
 					}
 				}
 			}
 		}
 	}
 
-	if stepUpY > startFeet {
-		newPos.Y = stepUpY
+	// 3. Step-down check / Ground resolution
+	groundLevel := findGround(chosenPos, chosenFeet+0.05)
+
+	if chosenFeet > startFeet {
+		// We stepped up!
+		chosenPos.Y = chosenFeet
 		if c.Velocity.Y < 0 {
 			c.Velocity.Y = 0
 		}
 		c.IsGrounded = true
+	} else if c.Velocity.Y != 0 {
+		// Mid-air (jumping or falling)
+		chosenPos.Y += c.Velocity.Y * dt
+		if chosenPos.Y <= groundLevel {
+			chosenPos.Y = groundLevel
+			c.Velocity.Y = 0
+			c.IsGrounded = true
+		} else {
+			c.IsGrounded = false
+		}
 	} else {
-		newPos.Y += c.Velocity.Y * dt
-	}
-
-	// 3. Ground plane and walkable solid box collision
-	groundLevel := c.GroundY
-	for _, b := range solidBoxes {
-		if newPos.X+r*0.5 > b.Min.X && newPos.X-r*0.5 < b.Max.X &&
-			newPos.Z+r*0.5 > b.Min.Z && newPos.Z-r*0.5 < b.Max.Z {
-			if b.Max.Y <= startFeet+stepH+0.05 {
-				if b.Max.Y > groundLevel {
-					groundLevel = b.Max.Y
-				}
-			}
+		// Grounded locomotion
+		if chosenPos.Y <= groundLevel {
+			chosenPos.Y = groundLevel
+			c.Velocity.Y = 0
+			c.IsGrounded = true
+		} else if c.IsGrounded && (startFeet-groundLevel) <= stepH+0.05 && (startFeet-groundLevel) >= 0 {
+			// Step-down snap when walking down stairs/curbs
+			chosenPos.Y = groundLevel
+			c.Velocity.Y = 0
+			c.IsGrounded = true
+		} else {
+			chosenPos.Y = groundLevel
+			c.IsGrounded = true
 		}
 	}
 
-	if newPos.Y <= groundLevel {
-		newPos.Y = groundLevel
-		c.Velocity.Y = 0
-		c.IsGrounded = true
-	} else if c.IsGrounded && c.Velocity.Y <= 0 && (startFeet-groundLevel) <= stepH && (startFeet-groundLevel) >= 0 {
-		// Step-down snap when walking down stairs/curbs
-		newPos.Y = groundLevel
-		c.Velocity.Y = 0
-		c.IsGrounded = true
-	} else {
-		c.IsGrounded = false
-	}
-
-	c.Position = newPos
+	c.Position = chosenPos
 }
 
-// resolveWallCollisions prevents the player from passing through solid bounding boxes taller than StepHeight.
-func (c *FPSController) resolveWallCollisions(newPos rl.Vector3, boxes []rl.BoundingBox) rl.Vector3 {
+// resolveWallCollisionsAt checks horizontal collision against solid boxes taller than StepHeight above feetY.
+func (c *FPSController) resolveWallCollisionsAt(newPos rl.Vector3, feetY float32, boxes []rl.BoundingBox) rl.Vector3 {
 	r := c.PlayerRadius
 	stepH := c.StepHeight
-	startFeet := c.Position.Y
 
 	// Test X-axis movement
 	for _, b := range boxes {
-		obstacleHeightAboveFeet := b.Max.Y - startFeet
-		// Only obstacles taller than StepHeight block horizontal movement
-		if obstacleHeightAboveFeet > stepH && b.Min.Y < startFeet+c.EyeHeight {
+		obstacleHeightAboveFeet := b.Max.Y - feetY
+		// Only obstacles taller than StepHeight above feetY block horizontal movement
+		if obstacleHeightAboveFeet > stepH && b.Min.Y < feetY+c.EyeHeight {
 			if newPos.X+r > b.Min.X && newPos.X-r < b.Max.X &&
 				c.Position.Z+r > b.Min.Z && c.Position.Z-r < b.Max.Z {
 				newPos.X = c.Position.X
@@ -404,9 +458,9 @@ func (c *FPSController) resolveWallCollisions(newPos rl.Vector3, boxes []rl.Boun
 
 	// Test Z-axis movement
 	for _, b := range boxes {
-		obstacleHeightAboveFeet := b.Max.Y - startFeet
-		// Only obstacles taller than StepHeight block horizontal movement
-		if obstacleHeightAboveFeet > stepH && b.Min.Y < startFeet+c.EyeHeight {
+		obstacleHeightAboveFeet := b.Max.Y - feetY
+		// Only obstacles taller than StepHeight above feetY block horizontal movement
+		if obstacleHeightAboveFeet > stepH && b.Min.Y < feetY+c.EyeHeight {
 			if newPos.X+r > b.Min.X && newPos.X-r < b.Max.X &&
 				newPos.Z+r > b.Min.Z && newPos.Z-r < b.Max.Z {
 				newPos.Z = c.Position.Z
@@ -416,6 +470,11 @@ func (c *FPSController) resolveWallCollisions(newPos rl.Vector3, boxes []rl.Boun
 	}
 
 	return newPos
+}
+
+// resolveWallCollisions prevents the player from passing through solid bounding boxes taller than StepHeight.
+func (c *FPSController) resolveWallCollisions(newPos rl.Vector3, boxes []rl.BoundingBox) rl.Vector3 {
+	return c.resolveWallCollisionsAt(newPos, c.Position.Y, boxes)
 }
 
 // SetStepHeight adjusts the maximum ledge/staircase height the player can step up without jumping.

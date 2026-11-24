@@ -206,6 +206,62 @@ func TestFPSControllerStaircaseWalking(t *testing.T) {
 	}
 }
 
+func TestWalkUpStairsMovingForwardsContinuous(t *testing.T) {
+	// 4-step staircase in a 1.0m tile:
+	// Ascends North (-Z direction).
+	// Entrance is at Z: +0.50, Top is at Z: -0.50.
+	// Step 0: Z in [+0.25, +0.50], Y = -1.87 (rise 0.25)
+	// Step 1: Z in [ 0.00, +0.25], Y = -1.62 (rise 0.25)
+	// Step 2: Z in [-0.25,  0.00], Y = -1.37 (rise 0.25)
+	// Step 3: Z in [-0.50, -0.25], Y = -1.12 (rise 0.25)
+	// Followed by a top loft platform: Z in [-1.50, -0.50], Y = -1.12
+	staircase := []rl.BoundingBox{
+		rl.NewBoundingBox(rl.NewVector3(-0.5, -2.12, 0.25), rl.NewVector3(0.5, -1.87, 0.50)),
+		rl.NewBoundingBox(rl.NewVector3(-0.5, -2.12, 0.00), rl.NewVector3(0.5, -1.62, 0.25)),
+		rl.NewBoundingBox(rl.NewVector3(-0.5, -2.12, -0.25), rl.NewVector3(0.5, -1.37, 0.00)),
+		rl.NewBoundingBox(rl.NewVector3(-0.5, -2.12, -0.50), rl.NewVector3(0.5, -1.12, -0.25)),
+		rl.NewBoundingBox(rl.NewVector3(-0.5, -2.12, -1.50), rl.NewVector3(0.5, -1.12, -0.50)), // Loft platform
+	}
+
+	// Player starts on the floor at Z = 0.85 (in front of the stairs), feet at -2.12
+	spawn := rl.NewVector3(0.0, -2.12, 0.85)
+	fps := NewFPSController(spawn, -2.2)
+	fps.Position.Y = -2.12
+
+	// Standard 60 FPS frame delta: 3.5 m/s * 0.016s ≈ 0.056m per frame
+	const dt = float32(0.016)
+	frameDeltaZ := -fps.WalkSpeed * dt // Moving forward (-Z)
+
+	// Simulate pressing W continuously for 20 frames (reaches middle of loft platform)
+	for frame := 0; frame < 20; frame++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, frameDeltaZ), dt, staircase)
+	}
+
+	// Player must have walked all the way up to the top loft platform (-1.12)
+	if fps.Position.Y < -1.15 {
+		t.Fatalf("expected player to reach top of stairs at Y ~ -1.12, reached Y: %f (Z: %f)", fps.Position.Y, fps.Position.Z)
+	}
+	if fps.Position.Z > -0.55 {
+		t.Fatalf("expected player to advance onto loft at Z < -0.55, reached Z: %f", fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Errorf("expected player to be grounded on top loft platform")
+	}
+
+	// Now simulate pressing S (moving backwards/South) continuously for 20 frames to walk down
+	for frame := 0; frame < 20; frame++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -frameDeltaZ), dt, staircase)
+	}
+
+	// Player must have smoothly stepped down all the way to floor level (-2.12)
+	if fps.Position.Y > -2.10 {
+		t.Fatalf("expected player to walk down to ground level Y ~ -2.12, reached Y: %f", fps.Position.Y)
+	}
+	if !fps.IsGrounded {
+		t.Errorf("expected player to be grounded after walking down")
+	}
+}
+
 func TestFPSControllerStepHeightAdjustment(t *testing.T) {
 	spawn := rl.NewVector3(0, -2.2, 0)
 	fps := NewFPSController(spawn, -2.2)

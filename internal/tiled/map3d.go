@@ -145,6 +145,7 @@ type Tile3D struct {
 	StairDir    StairDirection
 	StepCount   int
 	StairHeight float32
+	StartHeight float32
 	Steps       []StairStep
 	StepBoxes   []rl.BoundingBox
 }
@@ -257,13 +258,14 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 		t.StepCount = 4
 	}
 	if t.StairHeight <= 0 {
-		t.StairHeight = 1.0
+		t.StairHeight = 1.1
 	}
 
-	bottomY := baseY
+	baseFloorY := baseY
 	if t.HasFlooring {
-		bottomY = baseY + FloorHeight
+		baseFloorY = baseY + FloorHeight
 	}
+	bottomY := baseFloorY + t.StartHeight
 
 	n := t.StepCount
 	stepRise := t.StairHeight / float32(n)
@@ -273,7 +275,17 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 	worldZ := t.Position.Z
 
 	t.Steps = make([]StairStep, n)
-	t.StepBoxes = make([]rl.BoundingBox, n)
+	t.StepBoxes = make([]rl.BoundingBox, 0, n+1)
+
+	// If this staircase is elevated on top of a lower flight (StartHeight > 0),
+	// add the solid foundation bounding box underneath the steps.
+	if t.StartHeight > 0.001 {
+		foundationBB := rl.NewBoundingBox(
+			rl.NewVector3(worldX-ts/2.0, baseFloorY, worldZ-ts/2.0),
+			rl.NewVector3(worldX+ts/2.0, bottomY, worldZ+ts/2.0),
+		)
+		t.StepBoxes = append(t.StepBoxes, foundationBB)
+	}
 
 	for k := 0; k < n; k++ {
 		stepH := float32(k+1) * stepRise
@@ -291,7 +303,7 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 			pos = rl.NewVector3(worldX, centerY, centerZ)
 			size = rl.NewVector3(ts, stepH, stepRun)
 			bb = rl.NewBoundingBox(
-				rl.NewVector3(worldX-ts/2.0, bottomY, zMin),
+				rl.NewVector3(worldX-ts/2.0, baseFloorY, zMin),
 				rl.NewVector3(worldX+ts/2.0, bottomY+stepH, zMax),
 			)
 
@@ -303,7 +315,7 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 			pos = rl.NewVector3(worldX, centerY, centerZ)
 			size = rl.NewVector3(ts, stepH, stepRun)
 			bb = rl.NewBoundingBox(
-				rl.NewVector3(worldX-ts/2.0, bottomY, zMin),
+				rl.NewVector3(worldX-ts/2.0, baseFloorY, zMin),
 				rl.NewVector3(worldX+ts/2.0, bottomY+stepH, zMax),
 			)
 
@@ -315,7 +327,7 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 			pos = rl.NewVector3(centerX, centerY, worldZ)
 			size = rl.NewVector3(stepRun, stepH, ts)
 			bb = rl.NewBoundingBox(
-				rl.NewVector3(xMin, bottomY, worldZ-ts/2.0),
+				rl.NewVector3(xMin, baseFloorY, worldZ-ts/2.0),
 				rl.NewVector3(xMax, bottomY+stepH, worldZ+ts/2.0),
 			)
 
@@ -327,7 +339,7 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 			pos = rl.NewVector3(centerX, centerY, worldZ)
 			size = rl.NewVector3(stepRun, stepH, ts)
 			bb = rl.NewBoundingBox(
-				rl.NewVector3(xMin, bottomY, worldZ-ts/2.0),
+				rl.NewVector3(xMin, baseFloorY, worldZ-ts/2.0),
 				rl.NewVector3(xMax, bottomY+stepH, worldZ+ts/2.0),
 			)
 		}
@@ -338,12 +350,13 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 			Size:        size,
 			BoundingBox: bb,
 		}
-		t.StepBoxes[k] = bb
+		t.StepBoxes = append(t.StepBoxes, bb)
 	}
 
+	totalH := t.StartHeight + t.StairHeight
 	t.IsSolid = true
-	t.Position = rl.NewVector3(worldX, bottomY+t.StairHeight/2.0, worldZ)
-	t.Size = rl.NewVector3(ts, t.StairHeight, ts)
+	t.Position = rl.NewVector3(worldX, baseFloorY+totalH/2.0, worldZ)
+	t.Size = rl.NewVector3(ts, totalH, ts)
 }
 
 // GetBoundingBox returns the 3D bounding box for this tile.
@@ -586,6 +599,7 @@ func (m3d *Map3D) Build() {
 	// Resolve walls (0-4 walls per square tile) and exterior face siding orientations
 	m3d.resolveTileWalls()
 	m3d.resolveWallFaces()
+	m3d.resolveStaircases()
 
 	// Process object groups (entity spawners, player starts, custom cubes)
 	for _, og := range m.ObjectGroups {
@@ -1385,7 +1399,7 @@ func (m3d *Map3D) createBaseTile3D(gid uint32, layerName string, col, row int, x
 			dirName = "West"
 		}
 
-		stairH := float32(1.0)
+		stairH := float32(1.1)
 		floorPos := rl.NewVector3(x, m3d.BaseY+FloorHeight/2.0, z)
 		floorSize := rl.NewVector3(ts, FloorHeight, ts)
 		floorCol := rl.NewColor(125, 85, 50, 255)
@@ -1420,8 +1434,8 @@ func (m3d *Map3D) createBaseTile3D(gid uint32, layerName string, col, row int, x
 		return t
 
 	case 29:
-		// Pioneer Loft Platform (1.0m elevated wood platform)
-		height := float32(1.0)
+		// Pioneer Loft Platform (2.2m elevated wood platform matching wall height)
+		height := float32(2.2)
 		floorPos := rl.NewVector3(x, m3d.BaseY+FloorHeight/2.0, z)
 		floorSize := rl.NewVector3(ts, FloorHeight, ts)
 		platformPos := rl.NewVector3(x, m3d.BaseY+FloorHeight+height/2.0, z)
@@ -1448,6 +1462,44 @@ func (m3d *Map3D) createBaseTile3D(gid uint32, layerName string, col, row int, x
 			FloorSize:      floorSize,
 			Walls:          WallEdgeNone,
 		}
+
+	case 30:
+		// Pioneer Wood Staircase (North - Upper Flight)
+		stairH := float32(1.1)
+		startH := float32(1.1)
+		floorPos := rl.NewVector3(x, m3d.BaseY+FloorHeight/2.0, z)
+		floorSize := rl.NewVector3(ts, FloorHeight, ts)
+		floorCol := rl.NewColor(125, 85, 50, 255)
+		floorWire := rl.NewColor(85, 55, 30, 255)
+
+		t := Tile3D{
+			GID:            gid,
+			LayerName:      layerName,
+			Col:            col,
+			Row:            row,
+			Position:       rl.NewVector3(x, m3d.BaseY+FloorHeight+(startH+stairH)/2.0, z),
+			Size:           rl.NewVector3(ts, startH+stairH, ts),
+			Color:          rl.NewColor(135, 92, 54, 255),
+			WireColor:      rl.NewColor(75, 50, 25, 255),
+			IsSolid:        true,
+			Type:           TileStairs,
+			Name:           "Pioneer Wood Staircase (North - Upper)",
+			IsStairs:       true,
+			StairDir:       StairAscendNorth,
+			StepCount:      4,
+			StairHeight:    stairH,
+			StartHeight:    startH,
+			HasFlooring:    true,
+			FloorGID:       10,
+			FloorType:      TileFloor,
+			FloorName:      "Wood Plank Floor",
+			FloorColor:     floorCol,
+			FloorWireColor: floorWire,
+			FloorPosition:  floorPos,
+			FloorSize:      floorSize,
+		}
+		t.rebuildStairSteps(ts, m3d.BaseY)
+		return t
 
 	default:
 		// Generic 3D Block / Custom Tileset Tile
@@ -1540,6 +1592,16 @@ func (m3d *Map3D) applyTilesetProperties(t *Tile3D) {
 							if h, err := strconv.ParseFloat(pVal, 32); err == nil && h > 0 {
 								t.StairHeight = float32(h)
 							}
+						} else if pName == "start_height" || pName == "base_height" || pName == "elevation" {
+							if sh, err := strconv.ParseFloat(pVal, 32); err == nil && sh >= 0 {
+								t.StartHeight = float32(sh)
+							}
+						} else if pName == "flight" {
+							if pVal == "upper" || pVal == "second" {
+								if t.StartHeight == 0 {
+									t.StartHeight = 1.1
+								}
+							}
 						} else if pName == "height" && (t.Type == TileStairs || t.IsStairs) {
 							if h, err := strconv.ParseFloat(pVal, 32); err == nil && h > 0 {
 								t.StairHeight = float32(h)
@@ -1591,13 +1653,16 @@ func (m3d *Map3D) applyTilesetProperties(t *Tile3D) {
 						} else if strings.Contains(lowerName, "north") {
 							t.StairDir = StairAscendNorth
 						}
+						if (strings.Contains(lowerName, "upper") || strings.Contains(lowerName, "second")) && t.StartHeight == 0 {
+							t.StartHeight = 1.1
+						}
 					}
 					if t.Type == TileStairs || t.IsStairs {
 						if t.StepCount <= 0 {
 							t.StepCount = 4
 						}
 						if t.StairHeight <= 0 {
-							t.StairHeight = 1.0
+							t.StairHeight = 1.1
 						}
 						t.rebuildStairSteps(ts, m3d.BaseY)
 					}
@@ -1935,6 +2000,86 @@ func (m3d *Map3D) resolveWallFaces() {
 						ws.ExteriorFaces |= FaceWest
 					}
 				}
+			}
+		}
+	}
+}
+
+// resolveStaircases connects adjacent staircase flights and platforms.
+// If two staircase tiles are placed sequentially along their ascending direction,
+// the upper staircase automatically sets its StartHeight = lowerStair.StartHeight + lowerStair.StairHeight
+// (e.g. stacking a second flight to reach 2.2m from 1.1m) and rebuilds its steps with a solid base.
+// Additionally, if the staircase ascends into a landing platform or barricade, its height is aligned.
+func (m3d *Map3D) resolveStaircases() {
+	ts := m3d.TileSize
+
+	// Propagate heights across contiguous flights (up to 3 passes for multi-flight sequences)
+	for pass := 0; pass < 3; pass++ {
+		for i := range m3d.Tiles {
+			t := &m3d.Tiles[i]
+			if t.Type != TileStairs && !t.IsStairs {
+				continue
+			}
+
+			// Determine target adjacent coordinate in the ascending direction
+			nextCol, nextRow := t.Col, t.Row
+			switch t.StairDir {
+			case StairAscendNorth:
+				nextRow--
+			case StairAscendSouth:
+				nextRow++
+			case StairAscendEast:
+				nextCol++
+			case StairAscendWest:
+				nextCol--
+			}
+
+			nAhead := m3d.findTileAt(nextCol, nextRow)
+			if nAhead == nil {
+				continue
+			}
+
+			// 1. If adjacent tile ahead is also a staircase ascending in the same direction,
+			// stack it on top of this staircase!
+			if (nAhead.Type == TileStairs || nAhead.IsStairs) && nAhead.StairDir == t.StairDir {
+				topH := t.StartHeight + t.StairHeight
+				if nAhead.StartHeight < topH {
+					nAhead.StartHeight = topH
+					nAhead.rebuildStairSteps(ts, m3d.BaseY)
+				}
+			}
+
+			// 2. If adjacent tile ahead is a landing/loft platform, ensure its height matches the top of the stair
+			if nAhead.Type == TileBarricade || strings.Contains(strings.ToLower(nAhead.Name), "loft") || strings.Contains(strings.ToLower(nAhead.Name), "platform") {
+				topH := t.StartHeight + t.StairHeight
+				if nAhead.Size.Y < topH {
+					nAhead.Size.Y = topH
+					baseFloorY := m3d.BaseY
+					if nAhead.HasFlooring {
+						baseFloorY += FloorHeight
+					}
+					nAhead.Position.Y = baseFloorY + topH/2.0
+					m3d.alignConnectedPlatforms(nextCol, nextRow, topH)
+				}
+			}
+		}
+	}
+}
+
+// alignConnectedPlatforms propagates height to adjacent platform/barricade tiles (e.g. multi-tile lofts).
+func (m3d *Map3D) alignConnectedPlatforms(startCol, startRow int, height float32) {
+	deltas := [][2]int{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+	for _, d := range deltas {
+		nc, nr := startCol+d[0], startRow+d[1]
+		nb := m3d.findTileAt(nc, nr)
+		if nb != nil && (nb.Type == TileBarricade || strings.Contains(strings.ToLower(nb.Name), "loft") || strings.Contains(strings.ToLower(nb.Name), "platform")) {
+			if nb.Size.Y < height {
+				nb.Size.Y = height
+				baseFloorY := m3d.BaseY
+				if nb.HasFlooring {
+					baseFloorY += FloorHeight
+				}
+				nb.Position.Y = baseFloorY + height/2.0
 			}
 		}
 	}
@@ -2354,6 +2499,20 @@ func (m3d *Map3D) drawStaircase(t *Tile3D) {
 
 	const treadThickness float32 = 0.028
 
+	ts := m3d.TileSize
+	baseFloorY := m3d.BaseY
+	if t.HasFlooring {
+		baseFloorY += FloorHeight
+	}
+
+	// 0. If elevated (StartHeight > 0), draw the solid foundation riser block beneath it
+	if t.StartHeight > 0.001 {
+		foundationPos := rl.NewVector3(t.Position.X, baseFloorY+t.StartHeight/2.0, t.Position.Z)
+		foundationSize := rl.NewVector3(ts, t.StartHeight, ts)
+		rl.DrawCubeV(foundationPos, foundationSize, baseCol)
+		rl.DrawCubeWiresV(foundationPos, foundationSize, wireCol)
+	}
+
 	for _, step := range t.Steps {
 		// 1. Draw solid riser/box
 		rl.DrawCubeV(step.Position, step.Size, baseCol)
@@ -2497,6 +2656,7 @@ type Tile3DJSON struct {
 	StairDir      string            `json:"stair_direction,omitempty"`
 	StepCount     int               `json:"step_count,omitempty"`
 	StairHeight   float32           `json:"stair_height,omitempty"`
+	StartHeight   float32           `json:"start_height,omitempty"`
 }
 
 type WallSegmentJSON struct {
@@ -2635,6 +2795,7 @@ func (m3d *Map3D) ToJSON() ([]byte, error) {
 			StairDir:      stairDirToString(t.StairDir),
 			StepCount:     t.StepCount,
 			StairHeight:   t.StairHeight,
+			StartHeight:   t.StartHeight,
 		}
 	}
 
