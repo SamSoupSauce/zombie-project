@@ -254,6 +254,13 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 
 // rebuildStairSteps generates the individual step bounding boxes and 3D positions for TileStairs.
 func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
+	worldX := t.Position.X
+	worldZ := t.Position.Z
+	t.rebuildStairStepsWithBounds(ts, baseY, worldX-ts/2.0, worldX+ts/2.0, worldZ-ts/2.0, worldZ+ts/2.0)
+}
+
+// rebuildStairStepsWithBounds generates individual step bounding boxes spanning custom [minX, maxX] and [minZ, maxZ].
+func (t *Tile3D) rebuildStairStepsWithBounds(ts, baseY float32, minX, maxX, minZ, maxZ float32) {
 	if t.StepCount <= 0 {
 		t.StepCount = 4
 	}
@@ -269,10 +276,11 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 
 	n := t.StepCount
 	stepRise := t.StairHeight / float32(n)
-	stepRun := ts / float32(n)
 
-	worldX := t.Position.X
-	worldZ := t.Position.Z
+	widthX := maxX - minX
+	widthZ := maxZ - minZ
+	centerX := (minX + maxX) / 2.0
+	centerZ := (minZ + maxZ) / 2.0
 
 	t.Steps = make([]StairStep, n)
 	t.StepBoxes = make([]rl.BoundingBox, 0, n+1)
@@ -281,82 +289,122 @@ func (t *Tile3D) rebuildStairSteps(ts, baseY float32) {
 	// add the solid foundation bounding box underneath the steps.
 	if t.StartHeight > 0.001 {
 		foundationBB := rl.NewBoundingBox(
-			rl.NewVector3(worldX-ts/2.0, baseFloorY, worldZ-ts/2.0),
-			rl.NewVector3(worldX+ts/2.0, bottomY, worldZ+ts/2.0),
+			rl.NewVector3(minX, baseFloorY, minZ),
+			rl.NewVector3(maxX, bottomY, maxZ),
 		)
 		t.StepBoxes = append(t.StepBoxes, foundationBB)
 	}
 
-	for k := 0; k < n; k++ {
-		stepH := float32(k+1) * stepRise
-		centerY := bottomY + stepH/2.0
+	switch t.StairDir {
+	case StairAscendNorth:
+		// Low at South (maxZ), High at North (minZ)
+		runZ := widthZ
+		stepRun := runZ / float32(n)
+		for k := 0; k < n; k++ {
+			stepH := float32(k+1) * stepRise
+			centerY := bottomY + stepH/2.0
+			zMin := maxZ - float32(k+1)*stepRun
+			zMax := maxZ - float32(k)*stepRun
+			sCenterZ := (zMin + zMax) / 2.0
 
-		var pos, size rl.Vector3
-		var bb rl.BoundingBox
-
-		switch t.StairDir {
-		case StairAscendNorth:
-			// Low at South (+Z), High at North (-Z)
-			zMin := worldZ + ts/2.0 - float32(k+1)*stepRun
-			zMax := worldZ + ts/2.0 - float32(k)*stepRun
-			centerZ := (zMin + zMax) / 2.0
-			pos = rl.NewVector3(worldX, centerY, centerZ)
-			size = rl.NewVector3(ts, stepH, stepRun)
-			bb = rl.NewBoundingBox(
-				rl.NewVector3(worldX-ts/2.0, baseFloorY, zMin),
-				rl.NewVector3(worldX+ts/2.0, bottomY+stepH, zMax),
+			pos := rl.NewVector3(centerX, centerY, sCenterZ)
+			size := rl.NewVector3(widthX, stepH, stepRun)
+			bb := rl.NewBoundingBox(
+				rl.NewVector3(minX, baseFloorY, zMin),
+				rl.NewVector3(maxX, bottomY+stepH, zMax),
 			)
-
-		case StairAscendSouth:
-			// Low at North (-Z), High at South (+Z)
-			zMin := worldZ - ts/2.0 + float32(k)*stepRun
-			zMax := worldZ - ts/2.0 + float32(k+1)*stepRun
-			centerZ := (zMin + zMax) / 2.0
-			pos = rl.NewVector3(worldX, centerY, centerZ)
-			size = rl.NewVector3(ts, stepH, stepRun)
-			bb = rl.NewBoundingBox(
-				rl.NewVector3(worldX-ts/2.0, baseFloorY, zMin),
-				rl.NewVector3(worldX+ts/2.0, bottomY+stepH, zMax),
-			)
-
-		case StairAscendEast:
-			// Low at West (-X), High at East (+X)
-			xMin := worldX - ts/2.0 + float32(k)*stepRun
-			xMax := worldX - ts/2.0 + float32(k+1)*stepRun
-			centerX := (xMin + xMax) / 2.0
-			pos = rl.NewVector3(centerX, centerY, worldZ)
-			size = rl.NewVector3(stepRun, stepH, ts)
-			bb = rl.NewBoundingBox(
-				rl.NewVector3(xMin, baseFloorY, worldZ-ts/2.0),
-				rl.NewVector3(xMax, bottomY+stepH, worldZ+ts/2.0),
-			)
-
-		case StairAscendWest:
-			// Low at East (+X), High at West (-X)
-			xMin := worldX + ts/2.0 - float32(k+1)*stepRun
-			xMax := worldX + ts/2.0 - float32(k)*stepRun
-			centerX := (xMin + xMax) / 2.0
-			pos = rl.NewVector3(centerX, centerY, worldZ)
-			size = rl.NewVector3(stepRun, stepH, ts)
-			bb = rl.NewBoundingBox(
-				rl.NewVector3(xMin, baseFloorY, worldZ-ts/2.0),
-				rl.NewVector3(xMax, bottomY+stepH, worldZ+ts/2.0),
-			)
+			t.Steps[k] = StairStep{
+				Index:       k,
+				Position:    pos,
+				Size:        size,
+				BoundingBox: bb,
+			}
+			t.StepBoxes = append(t.StepBoxes, bb)
 		}
 
-		t.Steps[k] = StairStep{
-			Index:       k,
-			Position:    pos,
-			Size:        size,
-			BoundingBox: bb,
+	case StairAscendSouth:
+		// Low at North (minZ), High at South (maxZ)
+		runZ := widthZ
+		stepRun := runZ / float32(n)
+		for k := 0; k < n; k++ {
+			stepH := float32(k+1) * stepRise
+			centerY := bottomY + stepH/2.0
+			zMin := minZ + float32(k)*stepRun
+			zMax := minZ + float32(k+1)*stepRun
+			sCenterZ := (zMin + zMax) / 2.0
+
+			pos := rl.NewVector3(centerX, centerY, sCenterZ)
+			size := rl.NewVector3(widthX, stepH, stepRun)
+			bb := rl.NewBoundingBox(
+				rl.NewVector3(minX, baseFloorY, zMin),
+				rl.NewVector3(maxX, bottomY+stepH, zMax),
+			)
+			t.Steps[k] = StairStep{
+				Index:       k,
+				Position:    pos,
+				Size:        size,
+				BoundingBox: bb,
+			}
+			t.StepBoxes = append(t.StepBoxes, bb)
 		}
-		t.StepBoxes = append(t.StepBoxes, bb)
+
+	case StairAscendEast:
+		// Low at West (minX), High at East (maxX)
+		runX := widthX
+		stepRun := runX / float32(n)
+		for k := 0; k < n; k++ {
+			stepH := float32(k+1) * stepRise
+			centerY := bottomY + stepH/2.0
+			xMin := minX + float32(k)*stepRun
+			xMax := minX + float32(k+1)*stepRun
+			sCenterX := (xMin + xMax) / 2.0
+
+			pos := rl.NewVector3(sCenterX, centerY, centerZ)
+			size := rl.NewVector3(stepRun, stepH, widthZ)
+			bb := rl.NewBoundingBox(
+				rl.NewVector3(xMin, baseFloorY, minZ),
+				rl.NewVector3(xMax, bottomY+stepH, maxZ),
+			)
+			t.Steps[k] = StairStep{
+				Index:       k,
+				Position:    pos,
+				Size:        size,
+				BoundingBox: bb,
+			}
+			t.StepBoxes = append(t.StepBoxes, bb)
+		}
+
+	case StairAscendWest:
+		// Low at East (maxX), High at West (minX)
+		runX := widthX
+		stepRun := runX / float32(n)
+		for k := 0; k < n; k++ {
+			stepH := float32(k+1) * stepRise
+			centerY := bottomY + stepH/2.0
+			xMin := maxX - float32(k+1)*stepRun
+			xMax := maxX - float32(k)*stepRun
+			sCenterX := (xMin + xMax) / 2.0
+
+			pos := rl.NewVector3(sCenterX, centerY, centerZ)
+			size := rl.NewVector3(stepRun, stepH, widthZ)
+			bb := rl.NewBoundingBox(
+				rl.NewVector3(xMin, baseFloorY, minZ),
+				rl.NewVector3(xMax, bottomY+stepH, maxZ),
+			)
+			t.Steps[k] = StairStep{
+				Index:       k,
+				Position:    pos,
+				Size:        size,
+				BoundingBox: bb,
+			}
+			t.StepBoxes = append(t.StepBoxes, bb)
+		}
 	}
 
 	totalH := t.StartHeight + t.StairHeight
 	t.IsSolid = true
-	t.Position = rl.NewVector3(worldX, baseFloorY+totalH/2.0, worldZ)
-	t.Size = rl.NewVector3(ts, totalH, ts)
+	t.Position = rl.NewVector3(centerX, baseFloorY+totalH/2.0, centerZ)
+	t.Size = rl.NewVector3(widthX, totalH, widthZ)
 }
 
 // GetBoundingBox returns the 3D bounding box for this tile.
@@ -600,6 +648,7 @@ func (m3d *Map3D) Build() {
 	m3d.resolveTileWalls()
 	m3d.resolveWallFaces()
 	m3d.resolveStaircases()
+	m3d.extendStairsAndPillarsToWalls()
 
 	// Process object groups (entity spawners, player starts, custom cubes)
 	for _, og := range m.ObjectGroups {
@@ -2085,6 +2134,301 @@ func (m3d *Map3D) alignConnectedPlatforms(startCol, startRow int, height float32
 	}
 }
 
+// isPillarTile returns true if the tile is a pillar.
+func isPillarTile(t *Tile3D) bool {
+	if t == nil {
+		return false
+	}
+	return t.Type == TilePillar || strings.Contains(strings.ToLower(t.Name), "pillar")
+}
+
+// isStaircaseTile returns true if the tile is a staircase.
+func isStaircaseTile(t *Tile3D) bool {
+	if t == nil {
+		return false
+	}
+	return t.Type == TileStairs || t.IsStairs || strings.Contains(strings.ToLower(t.Name), "stair")
+}
+
+// isAnyWallTile returns true if the tile represents a wall or has active wall segments.
+func isAnyWallTile(t *Tile3D) bool {
+	if t == nil {
+		return false
+	}
+	if t.Type == TilePillar || t.Type == TileStairs || t.IsStairs || strings.Contains(strings.ToLower(t.Name), "pillar") || strings.Contains(strings.ToLower(t.Name), "stair") {
+		return false
+	}
+	if t.Type == TileWall || t.Type == TileWallExterior || t.Type == TileWallInterior {
+		return true
+	}
+	if t.Walls != 0 || len(t.WallSegments) > 0 {
+		return true
+	}
+	name := strings.ToLower(t.Name)
+	return strings.Contains(name, "wall")
+}
+
+// AdjacentWallInfo stores information about an adjacent wall face.
+type AdjacentWallInfo struct {
+	HasWall  bool
+	WallFace float32
+	WallTile *Tile3D
+}
+
+// findWallInDirection locates a wall on the neighbor tile at (col+dCol, row+dRow)
+// and calculates the nearest coordinate of its wall face facing this tile.
+func (m3d *Map3D) findWallInDirection(col, row, dCol, dRow int) AdjacentWallInfo {
+	nb := m3d.findTileAt(col+dCol, row+dRow)
+	if nb == nil || !isAnyWallTile(nb) {
+		return AdjacentWallInfo{HasWall: false}
+	}
+
+	var wallFace float32
+
+	if len(nb.WallSegments) > 0 {
+		switch {
+		case dCol > 0: // East (+X): find minimum Min.X among segments facing West
+			minX := float32(math.MaxFloat32)
+			for _, ws := range nb.WallSegments {
+				bb := ws.GetBoundingBox()
+				if bb.Min.X < minX {
+					minX = bb.Min.X
+				}
+			}
+			wallFace = minX
+
+		case dCol < 0: // West (-X): find maximum Max.X among segments facing East
+			maxX := float32(-math.MaxFloat32)
+			for _, ws := range nb.WallSegments {
+				bb := ws.GetBoundingBox()
+				if bb.Max.X > maxX {
+					maxX = bb.Max.X
+				}
+			}
+			wallFace = maxX
+
+		case dRow > 0: // South (+Z): find minimum Min.Z among segments facing North
+			minZ := float32(math.MaxFloat32)
+			for _, ws := range nb.WallSegments {
+				bb := ws.GetBoundingBox()
+				if bb.Min.Z < minZ {
+					minZ = bb.Min.Z
+				}
+			}
+			wallFace = minZ
+
+		case dRow < 0: // North (-Z): find maximum Max.Z among segments facing South
+			maxZ := float32(-math.MaxFloat32)
+			for _, ws := range nb.WallSegments {
+				bb := ws.GetBoundingBox()
+				if bb.Max.Z > maxZ {
+					maxZ = bb.Max.Z
+				}
+			}
+			wallFace = maxZ
+		}
+	} else {
+		nbBB := nb.GetBoundingBox()
+		switch {
+		case dCol > 0:
+			wallFace = nbBB.Min.X
+		case dCol < 0:
+			wallFace = nbBB.Max.X
+		case dRow > 0:
+			wallFace = nbBB.Min.Z
+		case dRow < 0:
+			wallFace = nbBB.Max.Z
+		}
+	}
+
+	return AdjacentWallInfo{
+		HasWall:  true,
+		WallFace: wallFace,
+		WallTile: nb,
+	}
+}
+
+// extendPillarToWalls expands a pillar's horizontal boundaries to seamlessly meet adjacent walls.
+func (m3d *Map3D) extendPillarToWalls(t *Tile3D) {
+	halfSizeX := t.Size.X / 2.0
+	halfSizeZ := t.Size.Z / 2.0
+
+	minX := t.Position.X - halfSizeX
+	maxX := t.Position.X + halfSizeX
+	minZ := t.Position.Z - halfSizeZ
+	maxZ := t.Position.Z + halfSizeZ
+
+	changed := false
+
+	// East (+X)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+		maxX = info.WallFace
+		changed = true
+	}
+	// West (-X)
+	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+		minX = info.WallFace
+		changed = true
+	}
+	// South (+Z)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+		maxZ = info.WallFace
+		changed = true
+	}
+	// North (-Z)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+		minZ = info.WallFace
+		changed = true
+	}
+
+	if changed {
+		t.Position.X = (minX + maxX) / 2.0
+		t.Position.Z = (minZ + maxZ) / 2.0
+		t.Size.X = maxX - minX
+		t.Size.Z = maxZ - minZ
+	}
+}
+
+// extendStaircaseToWalls expands a staircase's steps, bounding boxes, and foundation to meet adjacent walls.
+func (m3d *Map3D) extendStaircaseToWalls(t *Tile3D) {
+	ts := m3d.TileSize
+	baseMinX := t.Position.X - t.Size.X/2.0
+	baseMaxX := t.Position.X + t.Size.X/2.0
+	baseMinZ := t.Position.Z - t.Size.Z/2.0
+	baseMaxZ := t.Position.Z + t.Size.Z/2.0
+
+	minX := baseMinX
+	maxX := baseMaxX
+	minZ := baseMinZ
+	maxZ := baseMaxZ
+
+	changed := false
+
+	switch t.StairDir {
+	case StairAscendNorth:
+		// Lateral: East and West
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+			maxX = info.WallFace
+			changed = true
+		}
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+			minX = info.WallFace
+			changed = true
+		}
+		// Ascending: North (top of flight)
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+			minZ = info.WallFace
+			changed = true
+		}
+
+	case StairAscendSouth:
+		// Lateral: East and West
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+			maxX = info.WallFace
+			changed = true
+		}
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+			minX = info.WallFace
+			changed = true
+		}
+		// Ascending: South (top of flight)
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+			maxZ = info.WallFace
+			changed = true
+		}
+
+	case StairAscendEast:
+		// Lateral: North and South
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+			minZ = info.WallFace
+			changed = true
+		}
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+			maxZ = info.WallFace
+			changed = true
+		}
+		// Ascending: East (top of flight)
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+			maxX = info.WallFace
+			changed = true
+		}
+
+	case StairAscendWest:
+		// Lateral: North and South
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+			minZ = info.WallFace
+			changed = true
+		}
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+			maxZ = info.WallFace
+			changed = true
+		}
+		// Ascending: West (top of flight)
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+			minX = info.WallFace
+			changed = true
+		}
+	}
+
+	if changed {
+		t.rebuildStairStepsWithBounds(ts, m3d.BaseY, minX, maxX, minZ, maxZ)
+	}
+}
+
+// extendPlatformToWalls expands landing platforms / lofts to seamlessly meet adjacent walls.
+func (m3d *Map3D) extendPlatformToWalls(t *Tile3D) {
+	halfX := t.Size.X / 2.0
+	halfZ := t.Size.Z / 2.0
+	minX := t.Position.X - halfX
+	maxX := t.Position.X + halfX
+	minZ := t.Position.Z - halfZ
+	maxZ := t.Position.Z + halfZ
+	changed := false
+
+	// East (+X)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+		maxX = info.WallFace
+		changed = true
+	}
+	// West (-X)
+	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+		minX = info.WallFace
+		changed = true
+	}
+	// South (+Z)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+		maxZ = info.WallFace
+		changed = true
+	}
+	// North (-Z)
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+		minZ = info.WallFace
+		changed = true
+	}
+
+	if changed {
+		t.Position.X = (minX + maxX) / 2.0
+		t.Position.Z = (minZ + maxZ) / 2.0
+		t.Size.X = maxX - minX
+		t.Size.Z = maxZ - minZ
+	}
+}
+
+// extendStairsAndPillarsToWalls ensures that if there is a wall next to a staircase or pillar
+// in any direction, the staircase or pillar is extended to meet the wall seamlessly.
+func (m3d *Map3D) extendStairsAndPillarsToWalls() {
+	for i := range m3d.Tiles {
+		t := &m3d.Tiles[i]
+		if isPillarTile(t) {
+			m3d.extendPillarToWalls(t)
+		} else if isStaircaseTile(t) {
+			m3d.extendStaircaseToWalls(t)
+		} else if t.Type == TileBarricade || strings.Contains(strings.ToLower(t.Name), "platform") || strings.Contains(strings.ToLower(t.Name), "loft") {
+			m3d.extendPlatformToWalls(t)
+		}
+	}
+}
+
 // drawSlabTopCap renders an architectural coping or top wall cap trim.
 func (m3d *Map3D) drawSlabTopCap(pos, size rl.Vector3, capCol rl.Color) {
 	topY := pos.Y + size.Y/2.0 + 0.01
@@ -2499,7 +2843,6 @@ func (m3d *Map3D) drawStaircase(t *Tile3D) {
 
 	const treadThickness float32 = 0.028
 
-	ts := m3d.TileSize
 	baseFloorY := m3d.BaseY
 	if t.HasFlooring {
 		baseFloorY += FloorHeight
@@ -2508,7 +2851,7 @@ func (m3d *Map3D) drawStaircase(t *Tile3D) {
 	// 0. If elevated (StartHeight > 0), draw the solid foundation riser block beneath it
 	if t.StartHeight > 0.001 {
 		foundationPos := rl.NewVector3(t.Position.X, baseFloorY+t.StartHeight/2.0, t.Position.Z)
-		foundationSize := rl.NewVector3(ts, t.StartHeight, ts)
+		foundationSize := rl.NewVector3(t.Size.X, t.StartHeight, t.Size.Z)
 		rl.DrawCubeV(foundationPos, foundationSize, baseCol)
 		rl.DrawCubeWiresV(foundationPos, foundationSize, wireCol)
 	}

@@ -2,6 +2,7 @@ package tiled
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1603,5 +1604,237 @@ func TestStaircaseAutomaticStacking(t *testing.T) {
 	}
 	if platform.Size.Y < 2.19 {
 		t.Errorf("expected landing platform height automatically aligned to 2.2, got %f", platform.Size.Y)
+	}
+}
+
+// TestPillarExtendedToAdjacentWalls verifies that a pillar adjacent to a wall in any cardinal
+// direction (East, West, North, South) automatically expands its bounds to meet the wall face.
+func TestPillarExtendedToAdjacentWalls(t *testing.T) {
+	// 3x3 map with pillar at center (1, 1) and walls at (2, 1) [East], (0, 1) [West], (1, 0) [North], (1, 2) [South]
+	xmlData := `<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="3" height="3" tilewidth="32" tileheight="32">
+ <tileset firstgid="1" name="test_tiles" tilewidth="32" tileheight="32" tilecount="10" columns="5">
+  <tile id="0">
+   <properties><property name="name" value="Floor"/><property name="solid" type="bool" value="false"/></properties>
+  </tile>
+  <tile id="1">
+   <properties><property name="name" value="Stone Wall"/><property name="solid" type="bool" value="true"/></properties>
+  </tile>
+  <tile id="3">
+   <properties><property name="name" value="Steel Pillar"/><property name="solid" type="bool" value="true"/></properties>
+  </tile>
+ </tileset>
+ <layer id="1" name="PillarLayer" width="3" height="3">
+  <data encoding="csv">
+1,2,1,
+2,4,2,
+1,2,1
+  </data>
+ </layer>
+</map>`
+
+	m, err := ParseTMX([]byte(xmlData))
+	if err != nil {
+		t.Fatalf("failed to parse TMX: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, 0.0)
+
+	pillar := m3d.findTileAt(1, 1)
+	if pillar == nil || pillar.Type != TilePillar {
+		t.Fatalf("expected pillar at (1, 1)")
+	}
+
+	wallEast := m3d.findTileAt(2, 1)
+	wallWest := m3d.findTileAt(0, 1)
+	wallNorth := m3d.findTileAt(1, 0)
+	wallSouth := m3d.findTileAt(1, 2)
+
+	pBB := pillar.GetBoundingBox()
+
+	// Check East extension: pillar.Max.X meets wallEast.Min.X
+	if math.Abs(float64(pBB.Max.X-wallEast.GetBoundingBox().Min.X)) > 0.001 {
+		t.Errorf("expected pillar Max.X %f to meet wallEast Min.X %f", pBB.Max.X, wallEast.GetBoundingBox().Min.X)
+	}
+
+	// Check West extension: pillar.Min.X meets wallWest.Max.X
+	if math.Abs(float64(pBB.Min.X-wallWest.GetBoundingBox().Max.X)) > 0.001 {
+		t.Errorf("expected pillar Min.X %f to meet wallWest Max.X %f", pBB.Min.X, wallWest.GetBoundingBox().Max.X)
+	}
+
+	// Check North extension: pillar.Min.Z meets wallNorth.Max.Z
+	if math.Abs(float64(pBB.Min.Z-wallNorth.GetBoundingBox().Max.Z)) > 0.001 {
+		t.Errorf("expected pillar Min.Z %f to meet wallNorth Max.Z %f", pBB.Min.Z, wallNorth.GetBoundingBox().Max.Z)
+	}
+
+	// Check South extension: pillar.Max.Z meets wallSouth.Min.Z
+	if math.Abs(float64(pBB.Max.Z-wallSouth.GetBoundingBox().Min.Z)) > 0.001 {
+		t.Errorf("expected pillar Max.Z %f to meet wallSouth Min.Z %f", pBB.Max.Z, wallSouth.GetBoundingBox().Min.Z)
+	}
+}
+
+// TestStaircaseExtendedToAdjacentWalls verifies that a staircase adjacent to a wall
+// expands its step width, bounding boxes, and foundation to meet the wall with zero gap.
+func TestStaircaseExtendedToAdjacentWalls(t *testing.T) {
+	xmlData := `<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="3" height="3" tilewidth="32" tileheight="32">
+ <tileset firstgid="1" name="stair_test_tiles" tilewidth="32" tileheight="32" tilecount="10" columns="5">
+  <tile id="0">
+   <properties><property name="name" value="Floor"/><property name="solid" type="bool" value="false"/></properties>
+  </tile>
+  <tile id="1">
+   <properties>
+    <property name="name" value="House Wall East"/>
+    <property name="solid" type="bool" value="true"/>
+    <property name="wall_type" value="exterior"/>
+    <property name="walls" value="east"/>
+   </properties>
+  </tile>
+  <tile id="2">
+   <properties>
+    <property name="name" value="Wood Staircase North"/>
+    <property name="type" value="stairs"/>
+    <property name="direction" value="north"/>
+    <property name="steps" type="int" value="4"/>
+    <property name="rise" type="float" value="1.1"/>
+   </properties>
+  </tile>
+ </tileset>
+ <layer id="1" name="Layer1" width="3" height="3">
+  <data encoding="csv">
+1,1,1,
+1,3,2,
+1,1,1
+  </data>
+ </layer>
+</map>`
+
+	m, err := ParseTMX([]byte(xmlData))
+	if err != nil {
+		t.Fatalf("failed to parse TMX: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, 0.0)
+
+	stairs := m3d.findTileAt(1, 1)
+	if stairs == nil || !stairs.IsStairs {
+		t.Fatalf("expected stairs at (1, 1)")
+	}
+
+	wallEast := m3d.findTileAt(2, 1)
+	if wallEast == nil {
+		t.Fatalf("expected wall at (2, 1)")
+	}
+
+	wallFaceX := wallEast.GetBoundingBox().Min.X
+	stairBB := stairs.GetBoundingBox()
+
+	// 1. Verify staircase total bounding box meets the wall face
+	if math.Abs(float64(stairBB.Max.X-wallFaceX)) > 0.001 {
+		t.Errorf("expected staircase Max.X %f to meet wall face %f", stairBB.Max.X, wallFaceX)
+	}
+
+	// 2. Verify all individual step bounding boxes meet the wall face
+	for k, step := range stairs.Steps {
+		if math.Abs(float64(step.BoundingBox.Max.X-wallFaceX)) > 0.001 {
+			t.Errorf("step %d: expected Max.X %f to meet wall face %f", k, step.BoundingBox.Max.X, wallFaceX)
+		}
+		expectedWidth := wallFaceX - (-0.5)
+		if math.Abs(float64(step.Size.X-expectedWidth)) > 0.001 {
+			t.Errorf("step %d: expected width %f, got %f", k, expectedWidth, step.Size.X)
+		}
+	}
+}
+
+// TestConestogaMapStairsAndPillarsExtended tests the full Conestoga map to ensure
+// watchtower log pillars and pioneer staircases meet their adjacent walls seamlessly.
+func TestConestogaMapStairsAndPillarsExtended(t *testing.T) {
+	// Try both local and root paths
+	paths := []string{"../../maps/conestoga.tmx", "maps/conestoga.tmx"}
+	var m *Map
+	var err error
+	for _, p := range paths {
+		m, err = LoadTMX(p)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+
+	// 1. Watchtower Log Pillar at (Col 2, Row 2)
+	pillar := m3d.findTileAt(2, 2)
+	if pillar == nil || pillar.Type != TilePillar {
+		t.Fatalf("expected Watchtower Log Pillar at (2, 2)")
+	}
+	wallEast := m3d.findTileAt(3, 2)
+	if wallEast == nil {
+		t.Fatalf("expected Stone Wall at (3, 2)")
+	}
+	wallSouth := m3d.findTileAt(2, 3)
+	if wallSouth == nil {
+		t.Fatalf("expected Stone Wall at (2, 3)")
+	}
+
+	pBB := pillar.GetBoundingBox()
+	wEastBB := wallEast.GetBoundingBox()
+	wSouthBB := wallSouth.GetBoundingBox()
+
+	if math.Abs(float64(pBB.Max.X-wEastBB.Min.X)) > 0.001 {
+		t.Errorf("pillar (2, 2) Max.X %f does not meet East stone wall Min.X %f", pBB.Max.X, wEastBB.Min.X)
+	}
+	if math.Abs(float64(pBB.Max.Z-wSouthBB.Min.Z)) > 0.001 {
+		t.Errorf("pillar (2, 2) Max.Z %f does not meet South stone wall Min.Z %f", pBB.Max.Z, wSouthBB.Min.Z)
+	}
+
+	// 2. Pioneer Wood Staircases at (Col 8, Row 5) and (Col 8, Row 6)
+	lowerStairs := m3d.findTileAt(8, 6)
+	upperStairs := m3d.findTileAt(8, 5)
+	if lowerStairs == nil || !lowerStairs.IsStairs {
+		t.Fatalf("expected lower staircase at (8, 6)")
+	}
+	if upperStairs == nil || !upperStairs.IsStairs {
+		t.Fatalf("expected upper staircase at (8, 5)")
+	}
+
+	houseWallEast := m3d.findTileAt(9, 6)
+	if houseWallEast == nil {
+		t.Fatalf("expected House Wall (East) at (9, 6)")
+	}
+	wallEastFaceX := houseWallEast.GetBoundingBox().Min.X
+
+	// Lower stairs must meet the East house wall
+	lowerBB := lowerStairs.GetBoundingBox()
+	if math.Abs(float64(lowerBB.Max.X-wallEastFaceX)) > 0.001 {
+		t.Errorf("lower staircase Max.X %f does not meet East wall face %f", lowerBB.Max.X, wallEastFaceX)
+	}
+	for k, step := range lowerStairs.Steps {
+		if math.Abs(float64(step.BoundingBox.Max.X-wallEastFaceX)) > 0.001 {
+			t.Errorf("lower step %d Max.X %f does not meet wall face %f", k, step.BoundingBox.Max.X, wallEastFaceX)
+		}
+	}
+
+	// Upper stairs must meet the East house wall
+	upperBB := upperStairs.GetBoundingBox()
+	if math.Abs(float64(upperBB.Max.X-wallEastFaceX)) > 0.001 {
+		t.Errorf("upper staircase Max.X %f does not meet East wall face %f", upperBB.Max.X, wallEastFaceX)
+	}
+	for k, step := range upperStairs.Steps {
+		if math.Abs(float64(step.BoundingBox.Max.X-wallEastFaceX)) > 0.001 {
+			t.Errorf("upper step %d Max.X %f does not meet wall face %f", k, step.BoundingBox.Max.X, wallEastFaceX)
+		}
+	}
+
+	// Loft Platform at (Col 8, Row 4) must also meet the East house wall
+	loft := m3d.findTileAt(8, 4)
+	if loft == nil {
+		t.Fatalf("expected Loft Platform at (8, 4)")
+	}
+	loftBB := loft.GetBoundingBox()
+	if math.Abs(float64(loftBB.Max.X-wallEastFaceX)) > 0.001 {
+		t.Errorf("loft platform Max.X %f does not meet East wall face %f", loftBB.Max.X, wallEastFaceX)
 	}
 }
