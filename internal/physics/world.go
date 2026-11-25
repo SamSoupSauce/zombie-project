@@ -159,6 +159,11 @@ func (w *World) DrawDebug() {
 		return
 	}
 
+	// Draw static environment solid collision boxes (walls, floors, stairs, corners)
+	for _, box := range w.SolidBoxes {
+		rl.DrawBoundingBox(box, rl.NewColor(80, 180, 240, 160))
+	}
+
 	for _, b := range w.Bodies {
 		box := b.GetBoundingBox()
 		col := rl.NewColor(0, 220, 255, 230) // Dynamic in-air: bright cyan

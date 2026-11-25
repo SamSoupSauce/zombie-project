@@ -11,6 +11,7 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"zombie-project/internal/camera"
 	"zombie-project/internal/cube"
+	"zombie-project/internal/physics"
 )
 
 func TestParseTMXValid(t *testing.T) {
@@ -1949,5 +1950,233 @@ func TestWalkOntoSecondFloorFromStairs(t *testing.T) {
 	}
 	if !fps.IsGrounded {
 		t.Fatalf("player should remain grounded while exploring 2nd floor")
+	}
+}
+
+func TestCornerTilesHaveTopAndBottomCollision(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+
+	// Check 1st floor corner tiles: Col 3 & 9, Row 3 & 7, Elevation 0.0
+	cornerCoords := []struct {
+		col, row int
+		name     string
+		mask     uint8
+	}{
+		{3, 3, "NW Corner", WallEdgeNorth | WallEdgeWest},
+		{9, 3, "NE Corner", WallEdgeNorth | WallEdgeEast},
+		{3, 7, "SW Corner", WallEdgeSouth | WallEdgeWest},
+		{9, 7, "SE Corner", WallEdgeSouth | WallEdgeEast},
+	}
+
+	for _, cc := range cornerCoords {
+		// 1st Floor
+		t1 := m3d.findTileAtElevation(cc.col, cc.row, 0.0)
+		if t1 == nil {
+			t.Fatalf("1st floor corner at (%d, %d) not found", cc.col, cc.row)
+		}
+		if !t1.IsCorner() {
+			t.Errorf("expected 1st floor tile at (%d, %d) to be a corner", cc.col, cc.row)
+		}
+		if !t1.HasFlooring {
+			t.Errorf("expected 1st floor corner at (%d, %d) to have flooring", cc.col, cc.row)
+		}
+		if !t1.HasBottomCollision {
+			t.Errorf("expected 1st floor corner at (%d, %d) to have HasBottomCollision == true", cc.col, cc.row)
+		}
+		if !t1.HasTopCollision {
+			t.Errorf("expected 1st floor corner at (%d, %d) to have HasTopCollision == true", cc.col, cc.row)
+		}
+		// 1st floor bottom collision box (floor slab): Y in [-2.20, -2.12]
+		bBox1 := t1.GetBottomBoundingBox()
+		if math.Abs(float64(bBox1.Min.Y-(-2.20))) > 0.01 || math.Abs(float64(bBox1.Max.Y-(-2.12))) > 0.01 {
+			t.Errorf("1st floor corner (%d, %d) bottom box Y range expected [-2.20, -2.12], got [%f, %f]",
+				cc.col, cc.row, bBox1.Min.Y, bBox1.Max.Y)
+		}
+		// 1st floor top collision box (ceiling slab): Y in [0.00, 0.08]
+		tBox1 := t1.GetTopBoundingBox()
+		if math.Abs(float64(tBox1.Min.Y-0.00)) > 0.01 || math.Abs(float64(tBox1.Max.Y-0.08)) > 0.01 {
+			t.Errorf("1st floor corner (%d, %d) top box Y range expected [0.00, 0.08], got [%f, %f]",
+				cc.col, cc.row, tBox1.Min.Y, tBox1.Max.Y)
+		}
+
+		// 2nd Floor
+		t2 := m3d.findTileAtElevation(cc.col, cc.row, 2.2)
+		if t2 == nil {
+			t.Fatalf("2nd floor corner at (%d, %d) not found", cc.col, cc.row)
+		}
+		if !t2.IsCorner() {
+			t.Errorf("expected 2nd floor tile at (%d, %d) to be a corner", cc.col, cc.row)
+		}
+		if !t2.HasFlooring {
+			t.Errorf("expected 2nd floor corner at (%d, %d) to have flooring", cc.col, cc.row)
+		}
+		if !t2.HasBottomCollision {
+			t.Errorf("expected 2nd floor corner at (%d, %d) to have HasBottomCollision == true", cc.col, cc.row)
+		}
+		if !t2.HasTopCollision {
+			t.Errorf("expected 2nd floor corner at (%d, %d) to have HasTopCollision == true", cc.col, cc.row)
+		}
+		// 2nd floor bottom collision box (floor slab): Y in [0.00, 0.08]
+		bBox2 := t2.GetBottomBoundingBox()
+		if math.Abs(float64(bBox2.Min.Y-0.00)) > 0.01 || math.Abs(float64(bBox2.Max.Y-0.08)) > 0.01 {
+			t.Errorf("2nd floor corner (%d, %d) bottom box Y range expected [0.00, 0.08], got [%f, %f]",
+				cc.col, cc.row, bBox2.Min.Y, bBox2.Max.Y)
+		}
+		// 2nd floor top collision box (ceiling slab): Y in [2.20, 2.28]
+		tBox2 := t2.GetTopBoundingBox()
+		if math.Abs(float64(tBox2.Min.Y-2.20)) > 0.01 || math.Abs(float64(tBox2.Max.Y-2.28)) > 0.01 {
+			t.Errorf("2nd floor corner (%d, %d) top box Y range expected [2.20, 2.28], got [%f, %f]",
+				cc.col, cc.row, tBox2.Min.Y, tBox2.Max.Y)
+		}
+
+		// Verify 1st floor ceiling matches 2nd floor floor slab identically
+		if math.Abs(float64(tBox1.Min.Y-bBox2.Min.Y)) > 0.001 || math.Abs(float64(tBox1.Max.Y-bBox2.Max.Y)) > 0.001 {
+			t.Errorf("1st floor top box [%f, %f] does not match 2nd floor bottom box [%f, %f]",
+				tBox1.Min.Y, tBox1.Max.Y, bBox2.Min.Y, bBox2.Max.Y)
+		}
+	}
+
+	// Verify that non-corner straight wall tiles do NOT have HasBottomCollision or HasTopCollision
+	// (so they do not obstruct openings like the staircase entrance at col 8)
+	straightWall := m3d.findTileAtElevation(8, 7, 2.2)
+	if straightWall != nil {
+		if straightWall.IsCorner() {
+			t.Errorf("tile at (8, 7) should not be a corner")
+		}
+		if straightWall.HasBottomCollision || straightWall.HasTopCollision {
+			t.Errorf("straight wall at (8, 7) should not have top/bottom collision boxes")
+		}
+	}
+}
+
+func TestWalkIntoAllHouseCorners(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+	solidBoxes := m3d.GetSolidBoxes()
+
+	// Corner interior test positions:
+	// Tile footprint for (Col 3, Row 3) is [-5.0, -4.0] X and [-5.0, -4.0] Z.
+	// Walkable corner interior is at (-4.3, -4.3).
+	// Tile footprint for (Col 9, Row 3) is [1.0, 2.0] X and [-5.0, -4.0] Z.
+	// Walkable corner interior is at (1.3, -4.3).
+	// Tile footprint for (Col 3, Row 7) is [-5.0, -4.0] X and [-1.0, 0.0] Z.
+	// Walkable corner interior is at (-4.3, -0.7).
+	// Tile footprint for (Col 9, Row 7) is [1.0, 2.0] X and [-1.0, 0.0] Z.
+	// Walkable corner interior is at (1.3, -0.7).
+
+	corners := []struct {
+		name string
+		x, z float32
+	}{
+		{"NW Corner", -4.3, -4.3},
+		{"NE Corner", 1.3, -4.3},
+		{"SW Corner", -4.3, -0.7},
+		{"SE Corner", 1.3, -0.7},
+	}
+
+	for _, c := range corners {
+		// Test 1st floor corner grounding
+		fps1 := camera.NewFPSController(rl.NewVector3(c.x, -2.12, c.z), -2.2)
+		fps1.Position.Y = -2.12
+		for step := 0; step < 10; step++ {
+			fps1.MoveWithCollisions(rl.NewVector3(0.01, 0, 0.01), 0.016, solidBoxes)
+		}
+		if math.Abs(float64(fps1.Position.Y-(-2.12))) > 0.05 {
+			t.Errorf("1st floor %s: player height expected -2.12m, got %f", c.name, fps1.Position.Y)
+		}
+		if !fps1.IsGrounded {
+			t.Errorf("1st floor %s: player should be grounded", c.name)
+		}
+
+		// Test 2nd floor corner grounding (CRITICAL: player must NOT fall through to 1st floor!)
+		fps2 := camera.NewFPSController(rl.NewVector3(c.x, 0.08, c.z), -2.2)
+		fps2.Position.Y = 0.08
+		for step := 0; step < 10; step++ {
+			fps2.MoveWithCollisions(rl.NewVector3(0.01, 0, 0.01), 0.016, solidBoxes)
+		}
+		if fps2.Position.Y < 0.00 {
+			t.Fatalf("2nd floor %s: PLAYER FELL THROUGH FLOOR! Y=%f (expected ~0.08m)", c.name, fps2.Position.Y)
+		}
+		if math.Abs(float64(fps2.Position.Y-0.08)) > 0.05 {
+			t.Errorf("2nd floor %s: player height expected 0.08m, got %f", c.name, fps2.Position.Y)
+		}
+		if !fps2.IsGrounded {
+			t.Errorf("2nd floor %s: player should be grounded on 2nd floor corner slab", c.name)
+		}
+	}
+}
+
+func TestCornerCeilingCollisionAndRaycast(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+
+	// Test 1st floor NW corner tile at (3, 3)
+	tNW := m3d.findTileAtElevation(3, 3, 0.0)
+	if tNW == nil {
+		t.Fatalf("1st floor NW corner not found")
+	}
+
+	// 1. Raycast downward from above into the floor slab
+	downRay := rl.Ray{
+		Position:  rl.NewVector3(-4.3, 1.0, -4.3),
+		Direction: rl.NewVector3(0, -1, 0),
+	}
+	hit, dist := tNW.RayIntersects(downRay)
+	if !hit {
+		t.Fatalf("expected downward ray to hit corner tile")
+	}
+	hitY := downRay.Position.Y - dist
+	// The top cap of the corner tile is at Y = 0.08, which the ray strikes first
+	if math.Abs(float64(hitY-0.08)) > 0.02 {
+		t.Errorf("expected ray to hit top cap at Y=0.08, hit at Y=%f", hitY)
+	}
+
+	// 2. Raycast upward from ground into the ceiling slab
+	upRay := rl.Ray{
+		Position:  rl.NewVector3(-4.3, -2.0, -4.3),
+		Direction: rl.NewVector3(0, 1, 0),
+	}
+	hitUp, distUp := tNW.RayIntersects(upRay)
+	if !hitUp {
+		t.Fatalf("expected upward ray to hit corner ceiling")
+	}
+	hitCeilY := upRay.Position.Y + distUp
+	if math.Abs(float64(hitCeilY-0.00)) > 0.02 {
+		t.Errorf("expected upward ray to hit bottom of ceiling slab at Y=0.00, hit at Y=%f", hitCeilY)
+	}
+
+	// 3. Physics dynamic body jumping in the corner against ceiling slab
+	body := physics.NewBody("jumping_player", "Player", rl.NewVector3(-4.3, -0.3, -4.3), rl.NewVector3(0.2, 0.4, 0.2), 1.0)
+	body.Velocity = rl.NewVector3(0, 5.0, 0) // Moving upward fast
+
+	topBox := tNW.GetTopBoundingBox()
+	collided := physics.ResolveBodyVsAABB(body, topBox)
+	if !collided {
+		t.Fatalf("expected upward-moving physics body to collide with corner ceiling box")
+	}
+	// Body should have its upward velocity stopped/reversed
+	if body.Velocity.Y > 0 {
+		t.Errorf("body upward velocity should be stopped by ceiling, got %f", body.Velocity.Y)
+	}
+	// Body should be pushed below the ceiling (top of body <= topBox.Min.Y = 0.00)
+	bodyTop := body.Position.Y + body.HalfExtents.Y
+	if bodyTop > topBox.Min.Y+0.01 {
+		t.Errorf("body top %f penetrated ceiling %f", bodyTop, topBox.Min.Y)
 	}
 }

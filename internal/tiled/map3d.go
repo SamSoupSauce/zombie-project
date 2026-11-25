@@ -149,8 +149,80 @@ type Tile3D struct {
 	Steps       []StairStep
 	StepBoxes   []rl.BoundingBox
 
+	// Corner collision meshes (floor slab at bottom, ceiling slab at top)
+	HasBottomCollision bool
+	BottomCollisionBox rl.BoundingBox
+	HasTopCollision    bool
+	TopCollisionBox    rl.BoundingBox
+
 	// Multi-story building layer elevation (0.0 for ground floor, 2.2 for second floor, etc.)
 	Elevation float32
+}
+
+// IsCorner returns true if this tile has two perpendicular wall edges (NW, NE, SW, SE)
+// or is explicitly named a corner.
+func (t *Tile3D) IsCorner() bool {
+	if strings.Contains(strings.ToLower(t.Name), "corner") {
+		return true
+	}
+	if t.WallCount() == 2 {
+		hasNorthOrSouth := (t.Walls&WallEdgeNorth != 0) || (t.Walls&WallEdgeSouth != 0)
+		hasEastOrWest := (t.Walls&WallEdgeEast != 0) || (t.Walls&WallEdgeWest != 0)
+		return hasNorthOrSouth && hasEastOrWest
+	}
+	return false
+}
+
+// GetBottomBoundingBox returns the bottom collision bounding box (floor slab) for this tile.
+func (t *Tile3D) GetBottomBoundingBox() rl.BoundingBox {
+	if t.HasBottomCollision {
+		return t.BottomCollisionBox
+	}
+	ts := float32(1.0)
+	if t.FloorSize.X > 0 {
+		ts = t.FloorSize.X
+	} else if t.Size.X > 0 {
+		ts = t.Size.X
+	}
+	worldX := t.Position.X
+	worldZ := t.Position.Z
+	floorTopY := t.Position.Y
+	if t.HasFlooring && t.FloorSize.Y > 0 {
+		worldX = t.FloorPosition.X
+		worldZ = t.FloorPosition.Z
+		floorTopY = t.FloorPosition.Y + t.FloorSize.Y/2.0
+	}
+	return rl.NewBoundingBox(
+		rl.NewVector3(worldX-ts/2.0, floorTopY-FloorHeight, worldZ-ts/2.0),
+		rl.NewVector3(worldX+ts/2.0, floorTopY, worldZ+ts/2.0),
+	)
+}
+
+// GetTopBoundingBox returns the top collision bounding box (ceiling / cap slab) for this tile.
+func (t *Tile3D) GetTopBoundingBox() rl.BoundingBox {
+	if t.HasTopCollision {
+		return t.TopCollisionBox
+	}
+	ts := float32(1.0)
+	if t.FloorSize.X > 0 {
+		ts = t.FloorSize.X
+	} else if t.Size.X > 0 {
+		ts = t.Size.X
+	}
+	worldX := t.Position.X
+	worldZ := t.Position.Z
+	floorTopY := t.Position.Y
+	if t.HasFlooring && t.FloorSize.Y > 0 {
+		worldX = t.FloorPosition.X
+		worldZ = t.FloorPosition.Z
+		floorTopY = t.FloorPosition.Y + t.FloorSize.Y/2.0
+	}
+	wallH := DefaultWallHeight
+	wallTopY := floorTopY + wallH
+	return rl.NewBoundingBox(
+		rl.NewVector3(worldX-ts/2.0, wallTopY-FloorHeight, worldZ-ts/2.0),
+		rl.NewVector3(worldX+ts/2.0, wallTopY, worldZ+ts/2.0),
+	)
 }
 
 // WallCount returns the number of walls on this square tile (0 to 4).
@@ -185,6 +257,8 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 		if t.Type == TileWallExterior || t.Type == TileWallInterior || t.Type == TileWall {
 			t.IsSolid = false
 		}
+		t.HasBottomCollision = false
+		t.HasTopCollision = false
 		return
 	}
 	t.IsSolid = true
@@ -255,6 +329,34 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 		t.IsSolid = true
 		t.Position = t.WallSegments[0].Position
 		t.Size = t.WallSegments[0].Size
+	}
+
+	// Corner tiles with floors have collision meshes on top and bottom:
+	// - Bottom collision mesh: Floor slab bounding box at [floorTopY - FloorHeight, floorTopY]
+	// - Top collision mesh: Ceiling / cap slab bounding box at [wallTopY - FloorHeight, wallTopY]
+	if t.IsCorner() && t.HasFlooring {
+		t.HasBottomCollision = true
+		halfW := ts / 2.0
+		halfD := ts / 2.0
+		if t.FloorSize.X > 0 {
+			halfW = t.FloorSize.X / 2.0
+		}
+		if t.FloorSize.Z > 0 {
+			halfD = t.FloorSize.Z / 2.0
+		}
+		wallTopY := floorTopY + wallH
+		t.BottomCollisionBox = rl.NewBoundingBox(
+			rl.NewVector3(worldX-halfW, floorTopY-FloorHeight, worldZ-halfD),
+			rl.NewVector3(worldX+halfW, floorTopY, worldZ+halfD),
+		)
+		t.HasTopCollision = true
+		t.TopCollisionBox = rl.NewBoundingBox(
+			rl.NewVector3(worldX-halfW, wallTopY-FloorHeight, worldZ-halfD),
+			rl.NewVector3(worldX+halfW, wallTopY, worldZ+halfD),
+		)
+	} else {
+		t.HasBottomCollision = false
+		t.HasTopCollision = false
 	}
 }
 
@@ -465,6 +567,46 @@ func (t *Tile3D) GetBoundingBox() rl.BoundingBox {
 				bb.Max.Z = wsBB.Max.Z
 			}
 		}
+		if t.HasBottomCollision {
+			if t.BottomCollisionBox.Min.X < bb.Min.X {
+				bb.Min.X = t.BottomCollisionBox.Min.X
+			}
+			if t.BottomCollisionBox.Min.Y < bb.Min.Y {
+				bb.Min.Y = t.BottomCollisionBox.Min.Y
+			}
+			if t.BottomCollisionBox.Min.Z < bb.Min.Z {
+				bb.Min.Z = t.BottomCollisionBox.Min.Z
+			}
+			if t.BottomCollisionBox.Max.X > bb.Max.X {
+				bb.Max.X = t.BottomCollisionBox.Max.X
+			}
+			if t.BottomCollisionBox.Max.Y > bb.Max.Y {
+				bb.Max.Y = t.BottomCollisionBox.Max.Y
+			}
+			if t.BottomCollisionBox.Max.Z > bb.Max.Z {
+				bb.Max.Z = t.BottomCollisionBox.Max.Z
+			}
+		}
+		if t.HasTopCollision {
+			if t.TopCollisionBox.Min.X < bb.Min.X {
+				bb.Min.X = t.TopCollisionBox.Min.X
+			}
+			if t.TopCollisionBox.Min.Y < bb.Min.Y {
+				bb.Min.Y = t.TopCollisionBox.Min.Y
+			}
+			if t.TopCollisionBox.Min.Z < bb.Min.Z {
+				bb.Min.Z = t.TopCollisionBox.Min.Z
+			}
+			if t.TopCollisionBox.Max.X > bb.Max.X {
+				bb.Max.X = t.TopCollisionBox.Max.X
+			}
+			if t.TopCollisionBox.Max.Y > bb.Max.Y {
+				bb.Max.Y = t.TopCollisionBox.Max.Y
+			}
+			if t.TopCollisionBox.Max.Z > bb.Max.Z {
+				bb.Max.Z = t.TopCollisionBox.Max.Z
+			}
+		}
 		return bb
 	}
 	halfW := t.Size.X / 2.0
@@ -511,7 +653,13 @@ func (t *Tile3D) RayIntersects(ray rl.Ray) (bool, float32) {
 				minDist = dist
 			}
 		}
-		if t.HasFlooring {
+		if t.HasBottomCollision {
+			col := rl.GetRayCollisionBox(ray, t.BottomCollisionBox)
+			if col.Hit && col.Distance < minDist {
+				hitAny = true
+				minDist = col.Distance
+			}
+		} else if t.HasFlooring {
 			floorBB := rl.NewBoundingBox(
 				rl.NewVector3(t.FloorPosition.X-t.FloorSize.X/2.0, t.FloorPosition.Y-t.FloorSize.Y/2.0, t.FloorPosition.Z-t.FloorSize.Z/2.0),
 				rl.NewVector3(t.FloorPosition.X+t.FloorSize.X/2.0, t.FloorPosition.Y+t.FloorSize.Y/2.0, t.FloorPosition.Z+t.FloorSize.Z/2.0),
@@ -522,11 +670,40 @@ func (t *Tile3D) RayIntersects(ray rl.Ray) (bool, float32) {
 				minDist = col.Distance
 			}
 		}
+		if t.HasTopCollision {
+			col := rl.GetRayCollisionBox(ray, t.TopCollisionBox)
+			if col.Hit && col.Distance < minDist {
+				hitAny = true
+				minDist = col.Distance
+			}
+		}
 		return hitAny, minDist
 	}
 
+	hitAny := false
+	minDist := float32(math.MaxFloat32)
+
+	if t.HasBottomCollision {
+		col := rl.GetRayCollisionBox(ray, t.BottomCollisionBox)
+		if col.Hit && col.Distance < minDist {
+			hitAny = true
+			minDist = col.Distance
+		}
+	}
+	if t.HasTopCollision {
+		col := rl.GetRayCollisionBox(ray, t.TopCollisionBox)
+		if col.Hit && col.Distance < minDist {
+			hitAny = true
+			minDist = col.Distance
+		}
+	}
+
 	col := rl.GetRayCollisionBox(ray, t.GetBoundingBox())
-	return col.Hit, col.Distance
+	if col.Hit && col.Distance < minDist {
+		hitAny = true
+		minDist = col.Distance
+	}
+	return hitAny, minDist
 }
 
 // MapSpawnPoint represents an entity or trigger extracted from <objectgroup>.
@@ -642,6 +819,14 @@ func (m3d *Map3D) Build() {
 					for k := range tile.StepBoxes {
 						tile.StepBoxes[k].Min.Y += layerElevation
 						tile.StepBoxes[k].Max.Y += layerElevation
+					}
+					if tile.HasBottomCollision {
+						tile.BottomCollisionBox.Min.Y += layerElevation
+						tile.BottomCollisionBox.Max.Y += layerElevation
+					}
+					if tile.HasTopCollision {
+						tile.TopCollisionBox.Min.Y += layerElevation
+						tile.TopCollisionBox.Max.Y += layerElevation
 					}
 					// Floors on elevated layers must be solid so the player can walk on them!
 					if tile.Type == TileFloor || tile.Type == TileGrass || tile.Type == TileWater || tile.HasFlooring {
@@ -1815,8 +2000,20 @@ func (m3d *Map3D) GetSolidBoxes() []rl.BoundingBox {
 					boxes = append(boxes, ws.GetBoundingBox())
 				}
 			}
+			if t.HasBottomCollision {
+				boxes = append(boxes, t.BottomCollisionBox)
+			}
+			if t.HasTopCollision {
+				boxes = append(boxes, t.TopCollisionBox)
+			}
 		} else {
 			boxes = append(boxes, t.GetBoundingBox())
+			if t.HasBottomCollision {
+				boxes = append(boxes, t.BottomCollisionBox)
+			}
+			if t.HasTopCollision {
+				boxes = append(boxes, t.TopCollisionBox)
+			}
 		}
 	}
 	return boxes
@@ -3074,11 +3271,14 @@ type Tile3DJSON struct {
 	Size          [3]float32        `json:"size"`
 	Color         [4]uint8          `json:"color"`
 	WireColor     [4]uint8          `json:"wire_color"`
-	IsStairs      bool              `json:"is_stairs,omitempty"`
-	StairDir      string            `json:"stair_direction,omitempty"`
-	StepCount     int               `json:"step_count,omitempty"`
-	StairHeight   float32           `json:"stair_height,omitempty"`
-	StartHeight   float32           `json:"start_height,omitempty"`
+	IsStairs           bool              `json:"is_stairs,omitempty"`
+	StairDir           string            `json:"stair_direction,omitempty"`
+	StepCount          int               `json:"step_count,omitempty"`
+	StairHeight        float32           `json:"stair_height,omitempty"`
+	StartHeight        float32           `json:"start_height,omitempty"`
+	IsCorner           bool              `json:"is_corner,omitempty"`
+	HasBottomCollision bool              `json:"has_bottom_collision,omitempty"`
+	HasTopCollision    bool              `json:"has_top_collision,omitempty"`
 }
 
 type WallSegmentJSON struct {
@@ -3215,9 +3415,12 @@ func (m3d *Map3D) ToJSON() ([]byte, error) {
 			WireColor:     [4]uint8{t.WireColor.R, t.WireColor.G, t.WireColor.B, t.WireColor.A},
 			IsStairs:      t.IsStairs || t.Type == TileStairs,
 			StairDir:      stairDirToString(t.StairDir),
-			StepCount:     t.StepCount,
-			StairHeight:   t.StairHeight,
-			StartHeight:   t.StartHeight,
+			StepCount:          t.StepCount,
+			StairHeight:        t.StairHeight,
+			StartHeight:        t.StartHeight,
+			IsCorner:           t.IsCorner(),
+			HasBottomCollision: t.HasBottomCollision,
+			HasTopCollision:    t.HasTopCollision,
 		}
 	}
 
