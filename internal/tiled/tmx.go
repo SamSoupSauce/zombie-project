@@ -106,6 +106,16 @@ func (l Layer) IsVisible() bool {
 	return true
 }
 
+// GetProperty retrieves the string value of a named custom property on the Layer.
+func (l Layer) GetProperty(name, defaultVal string) string {
+	for _, p := range l.Properties {
+		if strings.EqualFold(p.Name, name) {
+			return p.GetVal()
+		}
+	}
+	return defaultVal
+}
+
 // Data represents <data> containing tile indices.
 type Data struct {
 	Encoding    string     `xml:"encoding,attr"`

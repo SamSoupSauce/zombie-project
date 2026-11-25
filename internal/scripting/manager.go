@@ -344,6 +344,24 @@ func (sm *ScriptManager) GetCurrentTarget() *cube.RainbowCube {
 
 func (sm *ScriptManager) createCubeTable(c *cube.RainbowCube) *lua.LTable {
 	cubeTable := sm.L.NewTable()
+	if c == nil {
+		sm.L.SetField(cubeTable, "name", lua.LString("None"))
+		sm.L.SetField(cubeTable, "id", lua.LString("none"))
+		noTargetFunc := sm.L.NewFunction(func(L *lua.LState) int {
+			L.Push(lua.LBool(false))
+			L.Push(lua.LString("No active target"))
+			return 2
+		})
+		sm.L.SetField(cubeTable, "delete", noTargetFunc)
+		sm.L.SetField(cubeTable, "destroy", noTargetFunc)
+		dummyVoid := sm.L.NewFunction(func(L *lua.LState) int { return 0 })
+		sm.L.SetField(cubeTable, "rotate", dummyVoid)
+		sm.L.SetField(cubeTable, "set_speed", dummyVoid)
+		sm.L.SetField(cubeTable, "set_scale", dummyVoid)
+		sm.L.SetField(cubeTable, "set_mode", dummyVoid)
+		sm.L.SetField(cubeTable, "set_wireframe", dummyVoid)
+		return cubeTable
+	}
 
 	argOffset := func(L *lua.LState) int {
 		if L.GetTop() >= 1 && L.Get(1).Type() == lua.LTTable {

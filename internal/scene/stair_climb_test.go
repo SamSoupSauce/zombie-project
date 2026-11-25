@@ -109,3 +109,79 @@ func TestWalkUpStairsDiagonallyWithoutJumping(t *testing.T) {
 		t.Fatalf("player failed to reach loft on diagonal walk: Pos: %v", fps.Position)
 	}
 }
+
+// TestDemoSceneNoFloatingRainbowBoxes verifies that the 4 floating rainbow boxes
+// previously hardcoded at origin and in the air have been eliminated from NewDemoScene.
+func TestDemoSceneNoFloatingRainbowBoxes(t *testing.T) {
+	scene := NewDemoScene()
+	if scene == nil {
+		t.Fatalf("failed to initialize NewDemoScene")
+	}
+
+	for _, c := range scene.Cubes {
+		// None of the spawned props should be floating in the air at Y >= 0.0
+		if c.Position.Y >= 0.0 {
+			t.Errorf("found floating cube '%s' (ID: %s) at Y=%f", c.Name, c.ID, c.Position.Y)
+		}
+		// None of the old demo cube IDs should exist
+		if c.ID == "cube_main" || c.ID == "cube_companion" || c.ID == "cube_mini" || c.ID == "cube_heavy" {
+			t.Errorf("found old demo floating cube '%s' (ID: %s)", c.Name, c.ID)
+		}
+	}
+}
+
+// TestDemoSceneSecondFloorExploration verifies that the player can navigate the Conestoga house
+// in NewDemoScene, climb the stairs, walk onto the 2nd floor, and explore it while grounded at Y ~ +0.08m.
+func TestDemoSceneSecondFloorExploration(t *testing.T) {
+	scene := NewDemoScene()
+	if scene == nil {
+		t.Fatalf("failed to initialize NewDemoScene")
+	}
+	if scene.Map3D == nil {
+		t.Fatalf("NewDemoScene missing Map3D")
+	}
+
+	solidBoxes := scene.Map3D.GetSolidBoxes()
+	fps := scene.FPS
+
+	// Move player to the base of the stairs in the Conestoga house (Col 8, Row 7)
+	fps.Position = rl.NewVector3(0.5, -2.12, -0.6)
+	fps.Velocity = rl.NewVector3(0, 0, 0)
+	fps.IsGrounded = true
+
+	// 1. Walk North up stairs to 2nd floor landing (Z = -3.5)
+	for frame := 0; frame < 40; frame++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.09), 0.016, solidBoxes)
+	}
+
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player did not reach 2nd floor height: Y=%f (Z=%f)", fps.Position.Y, fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player not grounded on 2nd floor landing")
+	}
+
+	// 2. Walk West into 2nd floor room (Col 8 -> Col 6)
+	for frame := 0; frame < 30; frame++ {
+		fps.MoveWithCollisions(rl.NewVector3(-0.08, 0, 0), 0.016, solidBoxes)
+	}
+
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player fell below 2nd floor walking West: Y=%f (X=%f)", fps.Position.Y, fps.Position.X)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player lost grounding on 2nd floor floor planks")
+	}
+
+	// 3. Walk South within 2nd floor room (Row 4 -> Row 6)
+	for frame := 0; frame < 25; frame++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, 0.08), 0.016, solidBoxes)
+	}
+
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player fell below 2nd floor walking South: Y=%f (Z=%f)", fps.Position.Y, fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player should remain grounded on 2nd floor")
+	}
+}

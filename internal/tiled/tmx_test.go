@@ -801,8 +801,8 @@ func TestLoadConestogaMap(t *testing.T) {
 	baseY := float32(-2.2)
 	m3d := NewMap3D(m, tileSize, baseY)
 
-	if len(m3d.Tiles) != 256 {
-		t.Fatalf("expected 256 tiles for 16x16 map, got %d", len(m3d.Tiles))
+	if len(m3d.Tiles) < 256 {
+		t.Fatalf("expected at least 256 tiles for 16x16 map with 2nd floor, got %d", len(m3d.Tiles))
 	}
 
 	// 1. Verify all tiles have flooring
@@ -1836,5 +1836,118 @@ func TestConestogaMapStairsAndPillarsExtended(t *testing.T) {
 	loftBB := loft.GetBoundingBox()
 	if math.Abs(float64(loftBB.Max.X-wallEastFaceX)) > 0.001 {
 		t.Errorf("loft platform Max.X %f does not meet East wall face %f", loftBB.Max.X, wallEastFaceX)
+	}
+}
+
+func TestConestogaSecondFloorConstruction(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	secondFloorLayer := m.GetLayerByName("SecondFloor")
+	if secondFloorLayer == nil {
+		t.Fatalf("expected layer 'SecondFloor' in conestoga.tmx")
+	}
+
+	elevStr := secondFloorLayer.GetProperty("elevation", "")
+	if elevStr != "2.2" {
+		t.Errorf("expected SecondFloor elevation property '2.2', got '%s'", elevStr)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+
+	// Verify 2nd floor tiles are created with Elevation = 2.2
+	secondFloorTileCount := 0
+	for _, tile := range m3d.Tiles {
+		if tile.Elevation == 2.2 {
+			secondFloorTileCount++
+			// 2nd floor surface top must be at baseY + elevation + FloorHeight = -2.2 + 2.2 + 0.08 = +0.08m
+			if tile.HasFlooring {
+				topY := tile.FloorPosition.Y + tile.FloorSize.Y/2.0
+				if math.Abs(float64(topY-0.08)) > 0.01 {
+					t.Errorf("expected 2nd floor tile (%d,%d) top surface at +0.08, got %f", tile.Col, tile.Row, topY)
+				}
+			}
+		}
+	}
+
+	if secondFloorTileCount == 0 {
+		t.Fatalf("expected 2nd floor tiles with Elevation=2.2, got 0")
+	}
+
+	// Verify open stairwell cutout above lower & upper flights (Col 8, Rows 5 & 6) on the 2nd floor
+	// (Should not have a solid floor blocking headroom)
+	for _, tile := range m3d.Tiles {
+		if tile.Elevation == 2.2 && tile.Col == 8 && (tile.Row == 5 || tile.Row == 6) {
+			t.Errorf("stairwell cutout at Col 8 Row %d should not have a 2nd-floor tile: %v", tile.Row, tile)
+		}
+	}
+
+	// Verify 2nd-floor wood floor landing at Col 8, Row 4 exists and is solid
+	landing := m3d.findTileAtLevel(8, 4, 0.0)
+	if landing == nil {
+		t.Fatalf("expected 2nd floor landing tile at Col 8, Row 4")
+	}
+	if !landing.IsSolid {
+		t.Errorf("2nd floor landing at Col 8, Row 4 must be solid")
+	}
+}
+
+func TestWalkOntoSecondFloorFromStairs(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+	solidBoxes := m3d.GetSolidBoxes()
+
+	// Player starts at bottom of stairs (Col 8 Row 7, X=0.5, Z=-0.6, feet at -2.12m)
+	fps := camera.NewFPSController(rl.NewVector3(0.5, -2.12, -0.6), -2.2)
+	fps.Position.Y = -2.12
+
+	// 1. Walk North up lower flight (Row 6) and upper flight (Row 5) into Row 4 landing (Z = -3.5)
+	for i := 0; i < 35; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.09), 0.016, solidBoxes)
+	}
+
+	// Verify player reached 2nd floor height (Y ~ +0.08m)
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player failed to reach 2nd floor from stairs: Y=%f (Z=%f)", fps.Position.Y, fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player should be grounded on 2nd floor landing")
+	}
+
+	// 2. Walk West into 2nd-floor room across Col 7 and Col 6 (X moves from 0.5 to -1.5)
+	for i := 0; i < 30; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(-0.08, 0, 0), 0.016, solidBoxes)
+	}
+
+	// Verify player is on 2nd floor inside the room (X < -0.5, Y ~ +0.08m)
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player fell through 2nd floor when walking West into room: Y=%f (X=%f)", fps.Position.Y, fps.Position.X)
+	}
+	if fps.Position.X > 0.0 {
+		t.Fatalf("player failed to advance West into 2nd floor room: X=%f", fps.Position.X)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player should remain grounded on 2nd floor wood planks")
+	}
+
+	// 3. Walk South within 2nd-floor room across Row 5 and Row 6 (Z moves toward South)
+	for i := 0; i < 20; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, 0.08), 0.016, solidBoxes)
+	}
+
+	// Verify player is still grounded on 2nd floor without falling
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player fell through 2nd floor when walking South: Y=%f (Z=%f)", fps.Position.Y, fps.Position.Z)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player should remain grounded while exploring 2nd floor")
 	}
 }

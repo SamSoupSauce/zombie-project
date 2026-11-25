@@ -330,34 +330,15 @@ func (s *DemoScene) SummonCube(cfg scripting.SummonConfig) *cube.RainbowCube {
 // NewDemoScene creates and initializes the first-person 3D game scene.
 func NewDemoScene() *DemoScene {
 	paths.EnsureProjectRoot()
-	// Primary central cube (35.0 kg: < 50kg, liftable)
-	cubeMain := cube.NewRainbowCubeWithConfig("cube_1", "RainbowCube", 1.0, rl.NewVector3(0.0, 0.0, 0.0), cube.ModeVertexGradient)
-	cubeMain.AutoRotate = false // Lua script manages rotation and dynamic hover
-	cubeMain.Mass = 35.0
 
-	// Secondary companion cube (24.0 kg: < 50kg, liftable)
-	cubeCompanion := cube.NewRainbowCubeWithConfig("cube_2", "CompanionCube", 0.75, rl.NewVector3(3.4, 0.0, 0.0), cube.ModeFaceColors)
-	cubeCompanion.RotationSpeed = rl.NewVector3(35.0, 30.0, 15.0)
-	cubeCompanion.Mass = 24.0
-
-	// Mini cube (12.0 kg: < 50kg, liftable)
-	cubeMini := cube.NewRainbowCubeWithConfig("cube_3", "MiniCube", 0.6, rl.NewVector3(-3.4, 0.0, 0.0), cube.ModeChromaCycle)
-	cubeMini.RotationSpeed = rl.NewVector3(20.0, 50.0, 35.0)
-	cubeMini.Mass = 12.0
-
-	// Heavy crate (160.0 kg: >= 50kg, demonstrates the strict < 50kg pickup rule!)
-	cubeHeavy := cube.NewRainbowCubeWithConfig("cube_heavy", "HeavyCrate", 1.1, rl.NewVector3(0.0, -1.1, 4.5), cube.ModeFaceColors)
-	cubeHeavy.AutoRotate = false
-	cubeHeavy.Mass = 160.0
-
-	cubes := []*cube.RainbowCube{cubeMain, cubeCompanion, cubeMini, cubeHeavy}
+	// Scene interactive props list (initialized from map props; no floating demo rainbow boxes)
+	cubes := make([]*cube.RainbowCube, 0)
 
 	cam := camera.NewOrbitCamera(rl.NewVector3(0.0, 0.0, 0.0), 10.0)
 
-	sm := scripting.NewScriptManager(cubeMain, cam)
-	sm.SetGlobalTarget(cubeMain)
+	sm := scripting.NewScriptManager(nil, cam)
 
-	// Load default TMX map (Pioneer house map with dual-face walls, stairs, and loft)
+	// Load default TMX map (Pioneer house map with dual-face walls, stairs, and 2nd floor)
 	var map3d *tiled.Map3D
 	tmxMap, err := tiled.LoadTMX("maps/conestoga.tmx")
 	if err == nil {
@@ -368,6 +349,13 @@ func NewDemoScene() *DemoScene {
 		for _, sc := range map3d.SpawnedCubes {
 			cubes = append(cubes, sc)
 		}
+	}
+
+	var primaryCube *cube.RainbowCube
+	if len(cubes) > 0 {
+		primaryCube = cubes[0]
+		sm.SetMainCube(primaryCube)
+		sm.SetGlobalTarget(primaryCube)
 	}
 
 	// Determine First-Person Player Spawn Position
@@ -389,22 +377,10 @@ func NewDemoScene() *DemoScene {
 
 	sm.SetFPSController(fps)
 
-	// Load default behavior script
-	_ = sm.LoadScript("scripts/cube_behavior.lua")
-
 	con := console.NewConsole(sm)
 
 	// Initialize 3D physics world with ground plane at Y = -2.2
 	physicsWorld := physics.NewWorld(-2.2)
-	if cubeMain.Body != nil {
-		cubeMain.Body.Type = physics.BodyDynamic // Dynamic body with full gravity and throwing physics
-		cubeMain.Body.UseGravity = true
-		cubeMain.Body.IsGrounded = false
-	}
-	if cubeHeavy.Body != nil {
-		cubeHeavy.Body.SetMass(160.0)
-	}
-
 	for _, c := range cubes {
 		if c.Body != nil {
 			physicsWorld.AddBody(c.Body)
@@ -415,9 +391,9 @@ func NewDemoScene() *DemoScene {
 		Camera:              cam,
 		FPS:                 fps,
 		ViewMode:            camera.ViewModeFirstPerson, // Default First Person perspective!
-		Cube:                cubeMain,
+		Cube:                primaryCube,
 		Cubes:               cubes,
-		SelectedCube:        cubeMain,
+		SelectedCube:        primaryCube,
 		Map3D:               map3d,
 		ShowMap:             true,
 		HUD:                 ui.NewHUD(),

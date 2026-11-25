@@ -148,6 +148,9 @@ type Tile3D struct {
 	StartHeight float32
 	Steps       []StairStep
 	StepBoxes   []rl.BoundingBox
+
+	// Multi-story building layer elevation (0.0 for ground floor, 2.2 for second floor, etc.)
+	Elevation float32
 }
 
 // WallCount returns the number of walls on this square tile (0 to 4).
@@ -187,6 +190,9 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 	t.IsSolid = true
 	wallH := float32(2.2)
 	floorTopY := baseY + FloorHeight
+	if t.HasFlooring && t.FloorSize.Y > 0 {
+		floorTopY = t.FloorPosition.Y + t.FloorSize.Y/2.0
+	}
 	centerY := floorTopY + wallH/2.0
 
 	worldX := t.Position.X
@@ -580,6 +586,15 @@ func (m3d *Map3D) Build() {
 			continue
 		}
 
+		layerElevation := float32(0.0)
+		if elevStr := layer.GetProperty("elevation", ""); elevStr != "" {
+			if v, err := strconv.ParseFloat(elevStr, 32); err == nil {
+				layerElevation = float32(v)
+			}
+		} else if strings.Contains(strings.ToLower(layer.Name), "second") || strings.Contains(strings.ToLower(layer.Name), "2nd") || strings.Contains(strings.ToLower(layer.Name), "upper") {
+			layerElevation = 2.2
+		}
+
 		for r := 0; r < len(layer.Tiles); r++ {
 			for c := 0; c < len(layer.Tiles[r]); c++ {
 				gid := layer.Tiles[r][c]
@@ -591,12 +606,14 @@ func (m3d *Map3D) Build() {
 				worldX := (float32(c) - mapW/2.0 + 0.5) * ts
 				worldZ := (float32(r) - mapH/2.0 + 0.5) * ts
 
-				// Check if an existing tile was already placed at (c, r) (e.g. from an earlier floor layer)
+				// Check if an existing tile was already placed at (c, r) at this same elevation level
 				existingIdx := -1
 				for i := range m3d.Tiles {
 					if m3d.Tiles[i].Col == c && m3d.Tiles[i].Row == r {
-						existingIdx = i
-						break
+						if math.Abs(float64(m3d.Tiles[i].Elevation-layerElevation)) < 0.5 {
+							existingIdx = i
+							break
+						}
 					}
 				}
 
@@ -607,14 +624,39 @@ func (m3d *Map3D) Build() {
 
 				tile := m3d.createTile3D(gid, layer.Name, c, r, worldX, worldZ)
 				tile.FlipFlags = flags
+				tile.Elevation = layerElevation
+
+				if layerElevation != 0 {
+					tile.Position.Y += layerElevation
+					if tile.HasFlooring {
+						tile.FloorPosition.Y += layerElevation
+					}
+					for k := range tile.WallSegments {
+						tile.WallSegments[k].Position.Y += layerElevation
+					}
+					for k := range tile.Steps {
+						tile.Steps[k].Position.Y += layerElevation
+						tile.Steps[k].BoundingBox.Min.Y += layerElevation
+						tile.Steps[k].BoundingBox.Max.Y += layerElevation
+					}
+					for k := range tile.StepBoxes {
+						tile.StepBoxes[k].Min.Y += layerElevation
+						tile.StepBoxes[k].Max.Y += layerElevation
+					}
+					// Floors on elevated layers must be solid so the player can walk on them!
+					if tile.Type == TileFloor || tile.Type == TileGrass || tile.Type == TileWater || tile.HasFlooring {
+						tile.IsSolid = true
+					}
+				}
+
 				if flags != 0 && tile.Walls != 0 {
 					tile.Walls = RotateWallMask(tile.Walls, flags)
 					tile.WallsExplicit = true
-					tile.rebuildWallSegments(ts, m3d.BaseY)
+					tile.rebuildWallSegments(ts, m3d.BaseY+tile.Elevation)
 				}
 				if flags != 0 && (tile.Type == TileStairs || tile.IsStairs) {
 					tile.StairDir = RotateStairDirection(tile.StairDir, flags)
-					tile.rebuildStairSteps(ts, m3d.BaseY)
+					tile.rebuildStairSteps(ts, m3d.BaseY+tile.Elevation)
 				}
 
 				if existingIdx >= 0 {
@@ -630,9 +672,9 @@ func (m3d *Map3D) Build() {
 						tile.FloorPosition = existing.FloorPosition
 						tile.FloorSize = existing.FloorSize
 						if tile.Type == TileStairs || tile.IsStairs {
-							tile.rebuildStairSteps(ts, m3d.BaseY)
+							tile.rebuildStairSteps(ts, m3d.BaseY+tile.Elevation)
 						} else {
-							tile.rebuildWallSegments(ts, m3d.BaseY)
+							tile.rebuildWallSegments(ts, m3d.BaseY+tile.Elevation)
 						}
 						m3d.Tiles[existingIdx] = tile
 						continue
@@ -1819,7 +1861,7 @@ func (m3d *Map3D) resolveTileWalls() {
 		t.HasFlooring = true
 		if t.FloorSize.X == 0 {
 			t.FloorSize = rl.NewVector3(ts, FloorHeight, ts)
-			t.FloorPosition = rl.NewVector3(t.Position.X, m3d.BaseY+FloorHeight/2.0, t.Position.Z)
+			t.FloorPosition = rl.NewVector3(t.Position.X, m3d.BaseY+t.Elevation+FloorHeight/2.0, t.Position.Z)
 			if t.Type == TileWallInterior || t.IsInterior {
 				t.FloorGID = 10
 				t.FloorType = TileFloor
@@ -1837,10 +1879,10 @@ func (m3d *Map3D) resolveTileWalls() {
 
 		if !t.WallsExplicit {
 			if isMultiRow {
-				nNorth := m3d.findTileAt(t.Col, t.Row-1)
-				nSouth := m3d.findTileAt(t.Col, t.Row+1)
-				nEast := m3d.findTileAt(t.Col+1, t.Row)
-				nWest := m3d.findTileAt(t.Col-1, t.Row)
+				nNorth := m3d.findTileAtElevation(t.Col, t.Row-1, t.Elevation)
+				nSouth := m3d.findTileAtElevation(t.Col, t.Row+1, t.Elevation)
+				nEast := m3d.findTileAtElevation(t.Col+1, t.Row, t.Elevation)
+				nWest := m3d.findTileAtElevation(t.Col-1, t.Row, t.Elevation)
 
 				wallN := isSameWallRun(t, nNorth)
 				wallS := isSameWallRun(t, nSouth)
@@ -1934,13 +1976,50 @@ func (m3d *Map3D) resolveTileWalls() {
 			}
 		}
 
-		t.rebuildWallSegments(ts, m3d.BaseY)
+		t.rebuildWallSegments(ts, m3d.BaseY+t.Elevation)
 	}
 }
 
-// findTileAt searches for the tile at grid coordinates (col, row).
-// If multiple tiles exist at (col, row), it prefers solid walls over floors.
+// findTileAtElevation searches for the tile at grid coordinates (col, row) matching a specific floor elevation.
+// If multiple tiles exist at (col, row), it prefers solid walls over floors at that elevation.
+func (m3d *Map3D) findTileAtElevation(col, row int, elevation float32) *Tile3D {
+	var fallback *Tile3D
+	for i := range m3d.Tiles {
+		if m3d.Tiles[i].Col == col && m3d.Tiles[i].Row == row {
+			if math.Abs(float64(m3d.Tiles[i].Elevation-elevation)) < 0.5 {
+				if m3d.Tiles[i].IsSolid {
+					return &m3d.Tiles[i]
+				}
+				fallback = &m3d.Tiles[i]
+			}
+		}
+	}
+	return fallback
+}
+
+// findTileAtLevel searches for the tile at grid coordinates (col, row) matching vertical level y.
+func (m3d *Map3D) findTileAtLevel(col, row int, y float32) *Tile3D {
+	elevation := y - m3d.BaseY
+	if elevation < 0 {
+		elevation = 0
+	}
+	// Round to nearest standard elevation step (0.0, 2.2, 4.4, ...)
+	if elevation > 1.1 {
+		elevation = float32(math.Round(float64(elevation)/2.2)) * 2.2
+	} else {
+		elevation = 0.0
+	}
+	if tile := m3d.findTileAtElevation(col, row, elevation); tile != nil {
+		return tile
+	}
+	return m3d.findTileAt(col, row)
+}
+
+// findTileAt searches for the tile at grid coordinates (col, row), defaulting to ground floor (elevation 0.0).
 func (m3d *Map3D) findTileAt(col, row int) *Tile3D {
+	if tile := m3d.findTileAtElevation(col, row, 0.0); tile != nil {
+		return tile
+	}
 	var fallback *Tile3D
 	for i := range m3d.Tiles {
 		if m3d.Tiles[i].Col == col && m3d.Tiles[i].Row == row {
@@ -1979,10 +2058,10 @@ func (m3d *Map3D) resolveWallFaces() {
 			continue
 		}
 
-		nNorth := m3d.findTileAt(t.Col, t.Row-1)
-		nSouth := m3d.findTileAt(t.Col, t.Row+1)
-		nEast := m3d.findTileAt(t.Col+1, t.Row)
-		nWest := m3d.findTileAt(t.Col-1, t.Row)
+		nNorth := m3d.findTileAtElevation(t.Col, t.Row-1, t.Elevation)
+		nSouth := m3d.findTileAtElevation(t.Col, t.Row+1, t.Elevation)
+		nEast := m3d.findTileAtElevation(t.Col+1, t.Row, t.Elevation)
+		nWest := m3d.findTileAtElevation(t.Col-1, t.Row, t.Elevation)
 
 		var extFaces uint8 = 0
 
@@ -2083,7 +2162,7 @@ func (m3d *Map3D) resolveStaircases() {
 				nextCol--
 			}
 
-			nAhead := m3d.findTileAt(nextCol, nextRow)
+			nAhead := m3d.findTileAtElevation(nextCol, nextRow, t.Elevation)
 			if nAhead == nil {
 				continue
 			}
@@ -2094,7 +2173,7 @@ func (m3d *Map3D) resolveStaircases() {
 				topH := t.StartHeight + t.StairHeight
 				if nAhead.StartHeight < topH {
 					nAhead.StartHeight = topH
-					nAhead.rebuildStairSteps(ts, m3d.BaseY)
+					nAhead.rebuildStairSteps(ts, m3d.BaseY+nAhead.Elevation)
 				}
 			}
 
@@ -2103,7 +2182,7 @@ func (m3d *Map3D) resolveStaircases() {
 				topH := t.StartHeight + t.StairHeight
 				if nAhead.Size.Y < topH {
 					nAhead.Size.Y = topH
-					baseFloorY := m3d.BaseY
+					baseFloorY := m3d.BaseY + nAhead.Elevation
 					if nAhead.HasFlooring {
 						baseFloorY += FloorHeight
 					}
@@ -2124,7 +2203,7 @@ func (m3d *Map3D) alignConnectedPlatforms(startCol, startRow int, height float32
 		if nb != nil && (nb.Type == TileBarricade || strings.Contains(strings.ToLower(nb.Name), "loft") || strings.Contains(strings.ToLower(nb.Name), "platform")) {
 			if nb.Size.Y < height {
 				nb.Size.Y = height
-				baseFloorY := m3d.BaseY
+				baseFloorY := m3d.BaseY + nb.Elevation
 				if nb.HasFlooring {
 					baseFloorY += FloorHeight
 				}
@@ -2176,9 +2255,9 @@ type AdjacentWallInfo struct {
 }
 
 // findWallInDirection locates a wall on the neighbor tile at (col+dCol, row+dRow)
-// and calculates the nearest coordinate of its wall face facing this tile.
-func (m3d *Map3D) findWallInDirection(col, row, dCol, dRow int) AdjacentWallInfo {
-	nb := m3d.findTileAt(col+dCol, row+dRow)
+// matching the vertical level y, and calculates the nearest coordinate of its wall face facing this tile.
+func (m3d *Map3D) findWallInDirection(col, row, dCol, dRow int, y float32) AdjacentWallInfo {
+	nb := m3d.findTileAtLevel(col+dCol, row+dRow, y)
 	if nb == nil || !isAnyWallTile(nb) {
 		return AdjacentWallInfo{HasWall: false}
 	}
@@ -2261,22 +2340,22 @@ func (m3d *Map3D) extendPillarToWalls(t *Tile3D) {
 	changed := false
 
 	// East (+X)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0, t.Position.Y); info.HasWall && info.WallFace > maxX {
 		maxX = info.WallFace
 		changed = true
 	}
 	// West (-X)
-	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0, t.Position.Y); info.HasWall && info.WallFace < minX {
 		minX = info.WallFace
 		changed = true
 	}
 	// South (+Z)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1, t.Position.Y); info.HasWall && info.WallFace > maxZ {
 		maxZ = info.WallFace
 		changed = true
 	}
 	// North (-Z)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1, t.Position.Y); info.HasWall && info.WallFace < minZ {
 		minZ = info.WallFace
 		changed = true
 	}
@@ -2307,71 +2386,71 @@ func (m3d *Map3D) extendStaircaseToWalls(t *Tile3D) {
 	switch t.StairDir {
 	case StairAscendNorth:
 		// Lateral: East and West
-		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0, t.Position.Y); info.HasWall && info.WallFace > maxX {
 			maxX = info.WallFace
 			changed = true
 		}
-		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0, t.Position.Y); info.HasWall && info.WallFace < minX {
 			minX = info.WallFace
 			changed = true
 		}
 		// Ascending: North (top of flight)
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1, t.Position.Y); info.HasWall && info.WallFace < minZ {
 			minZ = info.WallFace
 			changed = true
 		}
 
 	case StairAscendSouth:
 		// Lateral: East and West
-		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0, t.Position.Y); info.HasWall && info.WallFace > maxX {
 			maxX = info.WallFace
 			changed = true
 		}
-		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0, t.Position.Y); info.HasWall && info.WallFace < minX {
 			minX = info.WallFace
 			changed = true
 		}
 		// Ascending: South (top of flight)
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1, t.Position.Y); info.HasWall && info.WallFace > maxZ {
 			maxZ = info.WallFace
 			changed = true
 		}
 
 	case StairAscendEast:
 		// Lateral: North and South
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1, t.Position.Y); info.HasWall && info.WallFace < minZ {
 			minZ = info.WallFace
 			changed = true
 		}
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1, t.Position.Y); info.HasWall && info.WallFace > maxZ {
 			maxZ = info.WallFace
 			changed = true
 		}
 		// Ascending: East (top of flight)
-		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0, t.Position.Y); info.HasWall && info.WallFace > maxX {
 			maxX = info.WallFace
 			changed = true
 		}
 
 	case StairAscendWest:
 		// Lateral: North and South
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1, t.Position.Y); info.HasWall && info.WallFace < minZ {
 			minZ = info.WallFace
 			changed = true
 		}
-		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+		if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1, t.Position.Y); info.HasWall && info.WallFace > maxZ {
 			maxZ = info.WallFace
 			changed = true
 		}
 		// Ascending: West (top of flight)
-		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+		if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0, t.Position.Y); info.HasWall && info.WallFace < minX {
 			minX = info.WallFace
 			changed = true
 		}
 	}
 
 	if changed {
-		t.rebuildStairStepsWithBounds(ts, m3d.BaseY, minX, maxX, minZ, maxZ)
+		t.rebuildStairStepsWithBounds(ts, m3d.BaseY+t.Elevation, minX, maxX, minZ, maxZ)
 	}
 }
 
@@ -2386,22 +2465,22 @@ func (m3d *Map3D) extendPlatformToWalls(t *Tile3D) {
 	changed := false
 
 	// East (+X)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0); info.HasWall && info.WallFace > maxX {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 1, 0, t.Position.Y); info.HasWall && info.WallFace > maxX {
 		maxX = info.WallFace
 		changed = true
 	}
 	// West (-X)
-	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0); info.HasWall && info.WallFace < minX {
+	if info := m3d.findWallInDirection(t.Col, t.Row, -1, 0, t.Position.Y); info.HasWall && info.WallFace < minX {
 		minX = info.WallFace
 		changed = true
 	}
 	// South (+Z)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1); info.HasWall && info.WallFace > maxZ {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, 1, t.Position.Y); info.HasWall && info.WallFace > maxZ {
 		maxZ = info.WallFace
 		changed = true
 	}
 	// North (-Z)
-	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1); info.HasWall && info.WallFace < minZ {
+	if info := m3d.findWallInDirection(t.Col, t.Row, 0, -1, t.Position.Y); info.HasWall && info.WallFace < minZ {
 		minZ = info.WallFace
 		changed = true
 	}
