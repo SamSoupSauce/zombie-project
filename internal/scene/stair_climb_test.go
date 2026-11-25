@@ -185,3 +185,68 @@ func TestDemoSceneSecondFloorExploration(t *testing.T) {
 		t.Fatalf("player should remain grounded on 2nd floor")
 	}
 }
+
+// TestSecondFloorPerimeterWalkNoFallThrough verifies that a player walking along the entire perimeter
+// of the 2nd floor (stepping onto wall-edge floor tiles and wall-corner floor tiles) remains fully supported
+// at Y ~ +0.08m and never falls through the floor or ceiling to the ground floor.
+func TestSecondFloorPerimeterWalkNoFallThrough(t *testing.T) {
+	scene := NewDemoScene()
+	if scene == nil || scene.Map3D == nil {
+		t.Fatalf("failed to initialize demo scene")
+	}
+
+	solidBoxes := scene.Map3D.GetSolidBoxes()
+	fps := scene.FPS
+
+	// Start at 2nd floor landing (Col 8, Row 4)
+	fps.Position = rl.NewVector3(0.5, 0.08, -3.5)
+	fps.Velocity = rl.NewVector3(0, 0, 0)
+	fps.IsGrounded = true
+
+	// Step 1: Walk North into North wall tile (Col 8, Row 3)
+	for i := 0; i < 20; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.06), 0.016, solidBoxes)
+		if fps.Position.Y < -0.05 {
+			t.Fatalf("player fell below 2nd floor walking North into wall tile: Y=%f (Z=%f)", fps.Position.Y, fps.Position.Z)
+		}
+	}
+
+	// Step 2: Walk West along North wall edge tiles to NW Corner (Col 3, Row 3)
+	for i := 0; i < 80; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(-0.08, 0, 0), 0.016, solidBoxes)
+		if fps.Position.Y < -0.05 {
+			t.Fatalf("player fell below 2nd floor walking West along North wall: Y=%f (X=%f, Z=%f)", fps.Position.Y, fps.Position.X, fps.Position.Z)
+		}
+	}
+
+	// Step 3: Walk South along West wall edge tiles to SW Corner (Col 3, Row 7)
+	for i := 0; i < 70; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, 0.08), 0.016, solidBoxes)
+		if fps.Position.Y < -0.05 {
+			t.Fatalf("player fell below 2nd floor walking South along West wall: Y=%f (X=%f, Z=%f)", fps.Position.Y, fps.Position.X, fps.Position.Z)
+		}
+	}
+
+	// Step 4: Walk East along South wall edge tiles to SE Corner (Col 9, Row 7)
+	for i := 0; i < 90; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0.08, 0, 0), 0.016, solidBoxes)
+		if fps.Position.Y < -0.05 {
+			t.Fatalf("player fell below 2nd floor walking East along South wall: Y=%f (X=%f, Z=%f)", fps.Position.Y, fps.Position.X, fps.Position.Z)
+		}
+	}
+
+	// Step 5: Walk North along East wall edge tiles to NE Corner (Col 9, Row 3)
+	for i := 0; i < 70; i++ {
+		fps.MoveWithCollisions(rl.NewVector3(0, 0, -0.08), 0.016, solidBoxes)
+		if fps.Position.Y < -0.05 {
+			t.Fatalf("player fell below 2nd floor walking North along East wall: Y=%f (X=%f, Z=%f)", fps.Position.Y, fps.Position.X, fps.Position.Z)
+		}
+	}
+
+	if fps.Position.Y < -0.05 {
+		t.Fatalf("player ended perimeter walk below 2nd floor: Y=%f", fps.Position.Y)
+	}
+	if !fps.IsGrounded {
+		t.Fatalf("player should remain grounded throughout 2nd floor perimeter walk")
+	}
+}

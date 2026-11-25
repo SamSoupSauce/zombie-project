@@ -253,7 +253,7 @@ func (t *Tile3D) RemoveWall(edge uint8, ts, baseY float32) {
 // rebuildWallSegments updates the slice of 0.2m thick WallSegments based on t.Walls.
 func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 	t.WallSegments = make([]WallSegment, 0, 4)
-	if t.Walls == 0 {
+	if t.Walls == 0 && !(t.Elevation > 0 && t.HasFlooring) {
 		if t.Type == TileWallExterior || t.Type == TileWallInterior || t.Type == TileWall {
 			t.IsSolid = false
 		}
@@ -263,6 +263,26 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 	}
 	t.IsSolid = true
 	wallH := float32(2.2)
+
+	if t.HasFlooring {
+		if t.FloorSize.X == 0 {
+			t.FloorSize.X = ts
+		}
+		if t.FloorSize.Z == 0 {
+			t.FloorSize.Z = ts
+		}
+		if t.FloorSize.Y == 0 {
+			t.FloorSize.Y = FloorHeight
+		}
+		if t.FloorPosition.X == 0 && t.FloorPosition.Z == 0 {
+			t.FloorPosition.X = t.Position.X
+			t.FloorPosition.Z = t.Position.Z
+		}
+		if t.FloorPosition.Y == 0 {
+			t.FloorPosition.Y = baseY + FloorHeight/2.0
+		}
+	}
+
 	floorTopY := baseY + FloorHeight
 	if t.HasFlooring && t.FloorSize.Y > 0 {
 		floorTopY = t.FloorPosition.Y + t.FloorSize.Y/2.0
@@ -331,10 +351,10 @@ func (t *Tile3D) rebuildWallSegments(ts, baseY float32) {
 		t.Size = t.WallSegments[0].Size
 	}
 
-	// Corner tiles with floors have collision meshes on top and bottom:
+	// All wall tiles with flooring (both corners and straight wall edges) have collision meshes on top and bottom:
 	// - Bottom collision mesh: Floor slab bounding box at [floorTopY - FloorHeight, floorTopY]
 	// - Top collision mesh: Ceiling / cap slab bounding box at [wallTopY - FloorHeight, wallTopY]
-	if t.IsCorner() && t.HasFlooring {
+	if t.HasFlooring {
 		t.HasBottomCollision = true
 		halfW := ts / 2.0
 		halfD := ts / 2.0
@@ -2072,6 +2092,10 @@ func (m3d *Map3D) resolveTileWalls() {
 				t.FloorColor = rl.NewColor(45, 52, 65, 255)
 				t.FloorWireColor = rl.NewColor(30, 36, 46, 255)
 			}
+		}
+
+		if t.Elevation > 0 && t.FloorPosition.Y < m3d.BaseY+t.Elevation {
+			t.FloorPosition.Y += t.Elevation
 		}
 
 		if !t.WallsExplicit {

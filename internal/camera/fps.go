@@ -333,8 +333,9 @@ func (c *FPSController) MoveWithCollisions(deltaH rl.Vector3, dt float32, solidB
 	// Helper to check if a position has headroom (EyeHeight)
 	hasHeadroomAt := func(pos rl.Vector3, feetY float32) bool {
 		for _, b := range solidBoxes {
-			// A box obstructs headroom if it is above feetY and below feetY + EyeHeight
-			if b.Min.Y >= feetY && b.Min.Y < feetY+c.EyeHeight {
+			// A box obstructs headroom if it hangs down from above (Min.Y > feetY + stepH)
+			// and dips into the player's head/standing volume (Min.Y < feetY + c.EyeHeight)
+			if b.Min.Y > feetY+stepH && b.Min.Y < feetY+c.EyeHeight {
 				if pos.X+r*0.8 > b.Min.X && pos.X-r*0.8 < b.Max.X &&
 					pos.Z+r*0.8 > b.Min.Z && pos.Z-r*0.8 < b.Max.Z {
 					return false
@@ -359,8 +360,8 @@ func (c *FPSController) MoveWithCollisions(deltaH rl.Vector3, dt float32, solidB
 	// 2. Step-Up move (Quake / Source standard PM_StepSlideMove):
 	// If grounded or flat move was blocked, test the elevated step move
 	if c.IsGrounded || flatBlocked {
-		// Can we lift up by stepH? Check headroom
-		if hasHeadroomAt(c.Position, startFeet+stepH) {
+		// Can we step up? Verify headroom at current feet position
+		if hasHeadroomAt(c.Position, startFeet) {
 			stepPos := c.Position
 			stepPos.X += deltaH.X
 			stepPos.Z += deltaH.Z
@@ -375,9 +376,22 @@ func (c *FPSController) MoveWithCollisions(deltaH rl.Vector3, dt float32, solidB
 			// Find highest ground surface below stepPos that is reachable within stepH
 			stepGround := findGround(stepPos, startFeet+stepH+0.05)
 
+			canLandAtStep := func(pos rl.Vector3, feetY float32) bool {
+				for _, b := range solidBoxes {
+					obstacleHeightAboveFeet := b.Max.Y - feetY
+					if obstacleHeightAboveFeet > stepH && b.Min.Y <= feetY+stepH && b.Min.Y < feetY+c.EyeHeight {
+						if pos.X+r > b.Min.X && pos.X-r < b.Max.X &&
+							pos.Z+r > b.Min.Z && pos.Z-r < b.Max.Z {
+							return false
+						}
+					}
+				}
+				return true
+			}
+
 			// If step move made forward progress and found a valid surface up to stepH above startFeet:
 			if stepGround > startFeet && stepGround <= startFeet+stepH+0.05 {
-				if hasHeadroomAt(stepPos, stepGround) {
+				if hasHeadroomAt(stepPos, stepGround) && canLandAtStep(stepPos, stepGround) {
 					if stepDistSq >= flatDistSq-0.001 {
 						chosenPos = stepPos
 						chosenFeet = stepGround
@@ -387,7 +401,7 @@ func (c *FPSController) MoveWithCollisions(deltaH rl.Vector3, dt float32, solidB
 				// Flat was blocked by a low obstacle (e.g. step 2 ahead while on step 0),
 				// but stepPos could advance over it!
 				if stepGround >= startFeet-0.1 && stepGround <= startFeet+stepH+0.05 {
-					if hasHeadroomAt(stepPos, stepGround) {
+					if hasHeadroomAt(stepPos, stepGround) && canLandAtStep(stepPos, stepGround) {
 						chosenPos = stepPos
 						if stepGround > startFeet {
 							chosenFeet = stepGround
@@ -447,7 +461,7 @@ func (c *FPSController) resolveWallCollisionsAt(newPos rl.Vector3, feetY float32
 	for _, b := range boxes {
 		obstacleHeightAboveFeet := b.Max.Y - feetY
 		// Only obstacles taller than StepHeight above feetY block horizontal movement
-		if obstacleHeightAboveFeet > stepH && b.Min.Y < feetY+c.EyeHeight {
+		if obstacleHeightAboveFeet > stepH && b.Min.Y <= feetY+stepH && b.Min.Y < feetY+c.EyeHeight {
 			if newPos.X+r > b.Min.X && newPos.X-r < b.Max.X &&
 				c.Position.Z+r > b.Min.Z && c.Position.Z-r < b.Max.Z {
 				newPos.X = c.Position.X
@@ -460,7 +474,7 @@ func (c *FPSController) resolveWallCollisionsAt(newPos rl.Vector3, feetY float32
 	for _, b := range boxes {
 		obstacleHeightAboveFeet := b.Max.Y - feetY
 		// Only obstacles taller than StepHeight above feetY block horizontal movement
-		if obstacleHeightAboveFeet > stepH && b.Min.Y < feetY+c.EyeHeight {
+		if obstacleHeightAboveFeet > stepH && b.Min.Y <= feetY+stepH && b.Min.Y < feetY+c.EyeHeight {
 			if newPos.X+r > b.Min.X && newPos.X-r < b.Max.X &&
 				newPos.Z+r > b.Min.Z && newPos.Z-r < b.Max.Z {
 				newPos.Z = c.Position.Z

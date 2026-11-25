@@ -505,18 +505,34 @@ func TestWallsFlooringAndThickness(t *testing.T) {
 		}
 	}
 
-	// 3. Solid collision boxes should reflect the 0.2m thickness segments
+	// 3. Solid collision boxes should reflect the 0.2m thickness segments and top/bottom collision slabs
 	boxes := m3d.GetSolidBoxes()
-	if len(boxes) != 2 {
-		t.Fatalf("expected 2 solid boxes, got %d", len(boxes))
+	if len(boxes) != 6 {
+		t.Fatalf("expected 6 solid boxes (2 wall segments + 2 floor slabs + 2 ceiling slabs), got %d", len(boxes))
 	}
-	for i, b := range boxes {
+	var wallSegmentsCount, floorCeilSlabsCount int
+	for _, b := range boxes {
 		depth := b.Max.Z - b.Min.Z
 		width := b.Max.X - b.Min.X
-		// One dimension is thickness (0.2m), the other is length (1.0m)
-		if (depth < 0.19 || depth > 0.21) && (width < 0.19 || width > 0.21) {
-			t.Errorf("box %d expected to have ~0.2m thickness, got depth=%f, width=%f", i, depth, width)
+		height := b.Max.Y - b.Min.Y
+		// Wall segment: one horizontal dimension is thickness (~0.2m), height is 2.2m
+		if (depth >= 0.19 && depth <= 0.21) || (width >= 0.19 && width <= 0.21) {
+			if math.Abs(float64(height-DefaultWallHeight)) < 0.01 {
+				wallSegmentsCount++
+			}
 		}
+		// Floor / ceiling slab: full tile width & depth (1.0m x 1.0m), height is FloorHeight (0.08m)
+		if math.Abs(float64(width-1.0)) < 0.01 && math.Abs(float64(depth-1.0)) < 0.01 {
+			if math.Abs(float64(height-FloorHeight)) < 0.01 {
+				floorCeilSlabsCount++
+			}
+		}
+	}
+	if wallSegmentsCount != 2 {
+		t.Errorf("expected 2 wall segment boxes, got %d", wallSegmentsCount)
+	}
+	if floorCeilSlabsCount != 4 {
+		t.Errorf("expected 4 floor/ceiling slab boxes (2 bottom + 2 top), got %d", floorCeilSlabsCount)
 	}
 }
 
@@ -2042,16 +2058,31 @@ func TestCornerTilesHaveTopAndBottomCollision(t *testing.T) {
 		}
 	}
 
-	// Verify that non-corner straight wall tiles do NOT have HasBottomCollision or HasTopCollision
-	// (so they do not obstruct openings like the staircase entrance at col 8)
+	// Verify that straight wall-edge tiles (like South wall at Col 8, Row 7 on 2nd floor)
+	// DO have HasBottomCollision and HasTopCollision so the player standing near the wall doesn't fall through
 	straightWall := m3d.findTileAtElevation(8, 7, 2.2)
-	if straightWall != nil {
-		if straightWall.IsCorner() {
-			t.Errorf("tile at (8, 7) should not be a corner")
-		}
-		if straightWall.HasBottomCollision || straightWall.HasTopCollision {
-			t.Errorf("straight wall at (8, 7) should not have top/bottom collision boxes")
-		}
+	if straightWall == nil {
+		t.Fatalf("2nd floor straight wall at (8, 7) not found")
+	}
+	if straightWall.IsCorner() {
+		t.Errorf("tile at (8, 7) should not be a corner")
+	}
+	if !straightWall.HasFlooring {
+		t.Errorf("tile at (8, 7) expected to have flooring")
+	}
+	if !straightWall.HasBottomCollision {
+		t.Errorf("straight wall at (8, 7) expected HasBottomCollision == true")
+	}
+	if !straightWall.HasTopCollision {
+		t.Errorf("straight wall at (8, 7) expected HasTopCollision == true")
+	}
+	bBoxSW := straightWall.GetBottomBoundingBox()
+	if math.Abs(float64(bBoxSW.Min.Y-0.00)) > 0.01 || math.Abs(float64(bBoxSW.Max.Y-0.08)) > 0.01 {
+		t.Errorf("straight wall (8, 7) bottom box Y expected [0.00, 0.08], got [%f, %f]", bBoxSW.Min.Y, bBoxSW.Max.Y)
+	}
+	tBoxSW := straightWall.GetTopBoundingBox()
+	if math.Abs(float64(tBoxSW.Min.Y-2.20)) > 0.01 || math.Abs(float64(tBoxSW.Max.Y-2.28)) > 0.01 {
+		t.Errorf("straight wall (8, 7) top box Y expected [2.20, 2.28], got [%f, %f]", tBoxSW.Min.Y, tBoxSW.Max.Y)
 	}
 }
 
@@ -2178,5 +2209,136 @@ func TestCornerCeilingCollisionAndRaycast(t *testing.T) {
 	bodyTop := body.Position.Y + body.HalfExtents.Y
 	if bodyTop > topBox.Min.Y+0.01 {
 		t.Errorf("body top %f penetrated ceiling %f", bodyTop, topBox.Min.Y)
+	}
+}
+
+func TestSecondFloorWallEdgesAndCornersCollision(t *testing.T) {
+	path := filepath.Join("..", "..", "maps", "conestoga.tmx")
+	m, err := LoadTMX(path)
+	if err != nil {
+		t.Fatalf("failed to load conestoga.tmx: %v", err)
+	}
+
+	m3d := NewMap3D(m, 1.0, -2.2)
+	solidBoxes := m3d.GetSolidBoxes()
+
+	// List of all 2nd floor perimeter tiles (corners and straight wall edges)
+	perimeterTiles := []struct {
+		col, row int
+		name     string
+		isCorner bool
+	}{
+		// Corners
+		{3, 3, "2nd Floor NW Corner", true},
+		{9, 3, "2nd Floor NE Corner", true},
+		{3, 7, "2nd Floor SW Corner", true},
+		{9, 7, "2nd Floor SE Corner", true},
+		// North Wall Edges
+		{4, 3, "2nd Floor North Wall (Col 4)", false},
+		{5, 3, "2nd Floor North Wall (Col 5)", false},
+		{6, 3, "2nd Floor North Wall (Col 6)", false},
+		{7, 3, "2nd Floor North Wall (Col 7)", false},
+		{8, 3, "2nd Floor North Wall (Col 8)", false},
+		// South Wall Edges
+		{4, 7, "2nd Floor South Wall (Col 4)", false},
+		{5, 7, "2nd Floor South Wall (Col 5)", false},
+		{6, 7, "2nd Floor South Wall (Col 6)", false},
+		{7, 7, "2nd Floor South Wall (Col 7)", false},
+		{8, 7, "2nd Floor South Wall (Col 8)", false},
+		// West Wall Edges
+		{3, 4, "2nd Floor West Wall (Row 4)", false},
+		{3, 5, "2nd Floor West Wall (Row 5)", false},
+		{3, 6, "2nd Floor West Wall (Row 6)", false},
+		// East Wall Edges
+		{9, 4, "2nd Floor East Wall (Row 4)", false},
+		{9, 5, "2nd Floor East Wall (Row 5)", false},
+		{9, 6, "2nd Floor East Wall (Row 6)", false},
+		// Interior Partition Wall Edges
+		{5, 4, "2nd Floor Interior Wall (Col 5, Row 4)", false},
+		{5, 6, "2nd Floor Interior Wall (Col 5, Row 6)", false},
+	}
+
+	for _, pt := range perimeterTiles {
+		tile := m3d.findTileAtElevation(pt.col, pt.row, 2.2)
+		if tile == nil {
+			t.Fatalf("%s at (%d, %d) not found at elevation 2.2", pt.name, pt.col, pt.row)
+		}
+
+		if pt.isCorner && !tile.IsCorner() {
+			t.Errorf("%s at (%d, %d) expected IsCorner=true", pt.name, pt.col, pt.row)
+		}
+		if !pt.isCorner && tile.IsCorner() {
+			t.Errorf("%s at (%d, %d) expected IsCorner=false", pt.name, pt.col, pt.row)
+		}
+
+		if !tile.HasFlooring {
+			t.Errorf("%s at (%d, %d) expected HasFlooring=true", pt.name, pt.col, pt.row)
+		}
+		if !tile.HasBottomCollision {
+			t.Errorf("%s at (%d, %d) expected HasBottomCollision=true", pt.name, pt.col, pt.row)
+		}
+		if !tile.HasTopCollision {
+			t.Errorf("%s at (%d, %d) expected HasTopCollision=true", pt.name, pt.col, pt.row)
+		}
+
+		// Floor slab (bottom box): Y in [0.00, 0.08]
+		bBox := tile.GetBottomBoundingBox()
+		if math.Abs(float64(bBox.Min.Y-0.00)) > 0.01 || math.Abs(float64(bBox.Max.Y-0.08)) > 0.01 {
+			t.Errorf("%s at (%d, %d) bottom box Y range expected [0.00, 0.08], got [%f, %f]",
+				pt.name, pt.col, pt.row, bBox.Min.Y, bBox.Max.Y)
+		}
+		// Full tile footprint
+		width := bBox.Max.X - bBox.Min.X
+		depth := bBox.Max.Z - bBox.Min.Z
+		if math.Abs(float64(width-1.0)) > 0.01 || math.Abs(float64(depth-1.0)) > 0.01 {
+			t.Errorf("%s at (%d, %d) bottom box footprint expected 1.0x1.0, got width=%f, depth=%f",
+				pt.name, pt.col, pt.row, width, depth)
+		}
+
+		// Ceiling slab (top box): Y in [2.20, 2.28]
+		tBox := tile.GetTopBoundingBox()
+		if math.Abs(float64(tBox.Min.Y-2.20)) > 0.01 || math.Abs(float64(tBox.Max.Y-2.28)) > 0.01 {
+			t.Errorf("%s at (%d, %d) top box Y range expected [2.20, 2.28], got [%f, %f]",
+				pt.name, pt.col, pt.row, tBox.Min.Y, tBox.Max.Y)
+		}
+
+		// Verify bottom box is included in GetSolidBoxes()
+		foundBottom := false
+		foundTop := false
+		for _, sb := range solidBoxes {
+			if math.Abs(float64(sb.Min.X-bBox.Min.X)) < 0.001 && math.Abs(float64(sb.Max.X-bBox.Max.X)) < 0.001 &&
+				math.Abs(float64(sb.Min.Z-bBox.Min.Z)) < 0.001 && math.Abs(float64(sb.Max.Z-bBox.Max.Z)) < 0.001 &&
+				math.Abs(float64(sb.Min.Y-bBox.Min.Y)) < 0.001 && math.Abs(float64(sb.Max.Y-bBox.Max.Y)) < 0.001 {
+				foundBottom = true
+			}
+			if math.Abs(float64(sb.Min.X-tBox.Min.X)) < 0.001 && math.Abs(float64(sb.Max.X-tBox.Max.X)) < 0.001 &&
+				math.Abs(float64(sb.Min.Z-tBox.Min.Z)) < 0.001 && math.Abs(float64(sb.Max.Z-tBox.Max.Z)) < 0.001 &&
+				math.Abs(float64(sb.Min.Y-tBox.Min.Y)) < 0.001 && math.Abs(float64(sb.Max.Y-tBox.Max.Y)) < 0.001 {
+				foundTop = true
+			}
+		}
+		if !foundBottom {
+			t.Errorf("%s bottom box not found in GetSolidBoxes()", pt.name)
+		}
+		if !foundTop {
+			t.Errorf("%s top box not found in GetSolidBoxes()", pt.name)
+		}
+
+		// Downward raycast at center of tile from Y = 1.0 down to floor
+		centerWX := (float32(pt.col) - 16.0/2.0 + 0.5) * 1.0
+		centerWZ := (float32(pt.row) - 16.0/2.0 + 0.5) * 1.0
+		ray := rl.Ray{
+			Position:  rl.NewVector3(centerWX, 1.0, centerWZ),
+			Direction: rl.NewVector3(0, -1, 0),
+		}
+		hit, dist := tile.RayIntersects(ray)
+		if !hit {
+			t.Errorf("%s at (%d, %d) downward ray missed floor tile", pt.name, pt.col, pt.row)
+		} else {
+			hitY := ray.Position.Y - dist
+			if math.Abs(float64(hitY-0.08)) > 0.02 {
+				t.Errorf("%s at (%d, %d) downward ray hit at Y=%f, expected 0.08", pt.name, pt.col, pt.row, hitY)
+			}
+		}
 	}
 }
